@@ -1,0 +1,1 @@
+irei fazer uma api guardrail para tratar mensagens com conteúdo sensível
