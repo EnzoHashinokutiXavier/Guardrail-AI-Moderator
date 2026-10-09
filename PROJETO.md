@@ -6,24 +6,38 @@ API serverless na AWS que recebe um texto **em inglês** e censura partes dele (
 
 **Por que só inglês:** o `DetectPiiEntities` do Amazon Comprehend só suporta detecção de PII em inglês e espanhol — português não é suportado. Como o objetivo é usar o Comprehend pronto (sem treinar/manter um modelo próprio), o escopo do projeto foi restrito a texto em inglês. Isso também elimina a necessidade de detectar documentos específicos de um país (como CPF), já que os tipos de entidade nativos do Comprehend (nome, e-mail, telefone, endereço, SSN, cartão de crédito, etc.) cobrem bem o caso de uso em inglês.
 
+### Princípios
+
+Em caso de conflito, estes princípios têm prioridade sobre qualquer outra decisão deste documento:
+
+1. **Simples e funcional:** um guardrail que censura PII e conteúdo impróprio. Nada além do necessário para isso.
+2. **No ar só quando for usado:** `apply` para mostrar a alguém, `destroy` para remover depois. A stack não fica permanentemente no ar.
+3. **Derrubada automática em caso de abuso:** mais de 10 invocações da Lambda principal em 1 minuto zeram a concorrência dela, e a API para de processar texto. Requisições barradas antes da Lambda (400, 403, 429) não contam, porque não geram custo de Comprehend.
+4. **Religar só manualmente:** nada religa a stack sozinho. O único caminho de volta é um `apply` disparado manualmente.
+
 ## Arquitetura
 
 - **AWS Lambda** — executa a lógica de moderação, cobrança apenas pelo tempo de execução real.
-- **API Gateway** — expõe a Lambda como endpoint HTTP e identifica clientes via API Keys.
+- **API Gateway** — expõe a Lambda como endpoint HTTP, valida o body e aplica throttle/quota por API Key.
 - **Amazon Comprehend** — detecção de informações pessoais (PII) no texto.
 - **OpenAI Moderation API** — detecção de conteúdo inapropriado.
 - **AWS Systems Manager Parameter Store** — guarda de forma segura (`SecureString`) a chave da OpenAI usada pela Lambda.
-- **CloudWatch Alarm + SNS + Lambda "kill switch"** — contenção automática de custo: se o volume de invocações passar de um limite, zera a reserved concurrency da Lambda principal (ver "Custos").
+- **CloudWatch Alarm + SNS + Lambda "kill switch"** — contenção automática de custo: se a Lambda principal passar de **10 invocações em 1 minuto**, a concorrência dela é zerada e a API para de processar texto (ver "Custos").
 
 ```
-Cliente → API Gateway (valida API Key) → Lambda → Comprehend / OpenAI Moderation → Texto censurado
+Cliente (curl/Postman) → API Gateway (API Key, schema, throttle/quota) → Lambda → Comprehend / OpenAI Moderation → Texto censurado
+
+CloudWatch Alarm (Invocations > 10/min) → SNS → Lambda kill switch → concorrência da Lambda principal = 0
+                                            └→ e-mail de aviso
 ```
+
+Não há frontend: a demonstração é feita via `curl` ou Postman (ver "Acesso de demonstração").
 
 ### Região da AWS
 
 **Decisão: `us-east-1`.** O **Amazon Comprehend não está disponível na região São Paulo (`sa-east-1`)**, então a stack precisa rodar em outra região. Lambda, API Gateway e Parameter Store ficam na mesma região do Comprehend para evitar latência e custo de tráfego entre regiões.
 
-Consequência para a narrativa de LGPD: o texto recebido **sai do Brasil também na etapa de detecção de PII**, não só na de moderação de conteúdo. A ordem fixa Comprehend → OpenAI (ver "Caso 3 — Ambos") não serve para manter o processamento no Brasil — serve para não enviar PII em texto aberto para um **terceiro fora da relação AWS** (OpenAI). Isso deve ficar documentado explicitamente no README, como reconhecimento consciente da limitação em vez de omissão.
+Consequência para a narrativa de LGPD: o texto recebido **sai do Brasil também na etapa de detecção de PII**, não só na de moderação de conteúdo. A ordem fixa Comprehend → OpenAI (ver "Caso 3 — Ambos") não serve para manter o processamento no Brasil — serve para, no **modo 3**, não enviar PII em texto aberto para um **terceiro fora da relação AWS** (OpenAI). No **modo 2** essa proteção não existe: o texto original vai direto para a OpenAI (ver "Caso 2"). Isso deve ficar documentado explicitamente no README, como reconhecimento consciente da limitação em vez de omissão.
 
 ### Rede — Lambda sem VPC
 
@@ -36,9 +50,9 @@ A Lambda **não é associada a nenhuma VPC**. Nenhum recurso usado (Comprehend, 
 
 Em vez de manter uma lista própria de chaves de acesso, usar **API Gateway API Keys + Usage Plans**:
 
-- A AWS emite e revoga as chaves. Usar chaves **geradas pelo API Gateway** (não escolher o valor manualmente) e nunca embutir informação sensível no valor da chave.
-- Usage Plans permitem aplicar rate limit/throttling por cliente sem código extra, e reduzem a lógica de autenticação dentro da Lambda.
-- **API Key não é autenticação de verdade.** A própria documentação da AWS recomenda *não* usar API Keys para autenticar/autorizar acesso (sem expiração automática, sem escopo granular, trafegam em header que pode ser logado). Aqui ela é tratada apenas como **identificador de cliente para throttling/quota** — aceitável para MVP/portfólio, com o risco de custo contido pelos controles da seção "Custos" (e não pelo Usage Plan). Se o projeto evoluir para uso real com múltiplos clientes, trocar por Lambda Authorizer (JWT/Cognito) ou IAM.
+- A AWS emite e revoga as chaves. Usar uma única chave **gerada pelo API Gateway** (não escolher o valor manualmente) e nunca embutir informação sensível no valor da chave.
+- O Usage Plan aplica throttle e quota à chave sem código extra, e reduz a lógica de autenticação dentro da Lambda.
+- **API Key não é autenticação de verdade.** A própria documentação da AWS recomenda *não* usar API Keys para autenticar/autorizar acesso (sem expiração automática, sem escopo granular, trafegam em header que pode ser logado). Aqui ela é tratada apenas como **identificador de cliente para throttling/quota** — aceitável para MVP/portfólio, com o risco de custo contido pelo kill switch (ver "Custos"), e não pelo Usage Plan. Se o projeto evoluir para uso real com múltiplos clientes, trocar por Lambda Authorizer (JWT/Cognito) ou IAM.
 
 ## Contrato da API
 
@@ -51,6 +65,7 @@ Em vez de manter uma lista própria de chaves de acesso, usar **API Gateway API 
 }
 ```
 
+- `texto`: obrigatório, string de até **1.000 caracteres**.
 - `modo`:
   - `1` → censurar apenas informações pessoais
   - `2` → censurar apenas conteúdo inapropriado
@@ -58,9 +73,11 @@ Em vez de manter uma lista própria de chaves de acesso, usar **API Gateway API 
 
 A autenticação não vai no corpo do JSON — é feita pelo header `x-api-key` do API Gateway.
 
+**Só texto em inglês é suportado.** Texto em outro idioma não gera erro: a API responde normalmente, mas a PII não é detectada e passa sem censura.
+
 ### Response
 
-Exemplo com `modo: 1` (apenas PII, nenhum conteúdo sinalizado) — substituição é feita entidade por entidade, preservando o resto do texto:
+Exemplo com `modo: 1` (apenas PII) — a substituição é feita entidade por entidade, preservando o resto do texto:
 
 ```json
 {
@@ -83,54 +100,98 @@ Exemplo com `modo: 3` e conteúdo sinalizado como impróprio pela OpenAI Moderat
 }
 ```
 
+### Respostas de erro
+
+| Status | Causa |
+|---|---|
+| `400` | Body inválido: JSON malformado, `texto` ausente ou acima de 1.000 caracteres, `modo` diferente de 1, 2 ou 3 |
+| `403` | Header `x-api-key` ausente ou com key inválida |
+| `429` | Throttle ou quota do Usage Plan excedidos |
+| `5xx` | Falha ou timeout de um serviço de moderação (fail closed, ver "Tratamento de falhas"), ou kill switch ativo (Lambda throttled) |
+
+Em nenhum caso de erro o texto é devolvido.
+
 ## Lógica de moderação
 
 ### Caso 1 — Informações pessoais
 
 - Enviar o texto ao **Amazon Comprehend** (`DetectPiiEntities`).
-- Para cada entidade PII retornada (nome, e-mail, telefone, endereço, SSN, número de cartão, etc.), substituir o trecho correspondente por `***`.
+- Censurar apenas as entidades desta **lista fechada**, e só com `Score` **≥ 0,5**:
+  - `NAME`, `EMAIL`, `PHONE`, `ADDRESS`, `SSN`, `CREDIT_DEBIT_NUMBER`, `CREDIT_DEBIT_CVV`, `CREDIT_DEBIT_EXPIRY`, `PIN`, `BANK_ACCOUNT_NUMBER`, `BANK_ROUTING`, `PASSPORT_NUMBER`, `DRIVER_ID`, `IP_ADDRESS`, `PASSWORD`.
+  - CVV, validade, PIN, routing e senha entram junto com o número de cartão e de conta, já que deixá-los passar anula a censura do número.
+  - `DATE_TIME`, `AGE`, `URL` e as demais entidades são ignoradas.
+  - Score mínimo baixo de propósito: num guardrail, censurar demais é melhor do que deixar PII passar.
+- Substituir cada trecho aceito por `***`, aplicando as substituições **do fim para o início do texto** (ordenando por `BeginOffset` decrescente), senão os offsets das entidades seguintes se deslocam.
 
 ### Caso 2 — Conteúdo inapropriado
 
-- Enviar o texto ao endpoint gratuito **OpenAI Moderation API**.
+- Enviar o texto ao endpoint gratuito **OpenAI Moderation API** (modelo `omni-moderation-latest`).
 - A resposta indica categorias sinalizadas (ódio, violência, sexual, etc.) mas não a posição exata no texto.
 - **Decisão:** se o texto for sinalizado, censurar o texto todo (`***`). Um segundo passo com prompt a um modelo da OpenAI para apontar os trechos exatos foi descartado por enquanto — dobraria o custo por requisição (2 chamadas à OpenAI), adiciona latência, e abre risco de prompt injection (o texto do usuário viraria input de um prompt que decide o que censurar). Fica como possível evolução futura se a precisão de censura parcial for realmente necessária.
+- **PII no modo 2:** como não há passo de Comprehend, o **texto original, com PII, vai para a OpenAI**. Quem quiser proteger PII deve usar o modo 3.
 
 ### Caso 3 — Ambos
 
 - **Ordem fixa: Comprehend (Caso 1) sempre primeiro, depois OpenAI Moderation (Caso 2).**
-- A OpenAI Moderation recebe o texto **já processado pelo Comprehend** (PII substituída por `***`), nunca o original — é esse encadeamento, e não só a ordem das chamadas, que evita enviar PII de terceiros à OpenAI (ver "Região da AWS" para o alcance dessa proteção em relação à LGPD).
+- A OpenAI Moderation recebe o texto **já processado pelo Comprehend** (PII substituída por `***`), nunca o original — é esse encadeamento, e não só a ordem das chamadas, que evita enviar PII de terceiros à OpenAI (ver "Região da AWS" para o alcance dessa proteção em relação à LGPD). A proteção vale para o que o Caso 1 censura: entidades fora da lista, abaixo do score mínimo ou não detectadas (por exemplo, em texto que não está em inglês) seguem para a OpenAI.
 - **Combinação final:** se a OpenAI sinalizar o texto (já com PII redigida) como impróprio, vale a regra do Caso 2 — a resposta final é `"***"` inteiro, substituindo inclusive as marcações de PII que já haviam sido feitas (ver exemplo em "Contrato da API"). Se a OpenAI não sinalizar nada, a resposta final é o texto com PII redigida pelo Comprehend, sem alteração adicional.
 
 ### Tratamento de falhas
 
 - Se Comprehend ou OpenAI Moderation falharem/timeout, a resposta deve ser um erro (5xx) — **nunca** devolver o texto sem a censura correspondente (fail closed). Um serviço de moderação que falha e libera texto sem censurar é pior do que um serviço que fica indisponível.
+- **Timeouts:**
+  - Comprehend e SSM (boto3): `connect_timeout=1`, `read_timeout=3`, `retries={"max_attempts": 2, "mode": "standard"}`.
+  - OpenAI (`urllib`, sem dependências externas): `timeout=3`, no máximo 1 retry.
+  - O parâmetro do SSM é lido uma vez por container e cacheado em variável de módulo, fora do handler (ver "Segurança"). Assim, o SSM só entra no tempo da primeira invocação de cada container.
+  - Lambda: timeout de **15 s**. Se ela estourar, o API Gateway responde 5xx sem devolver texto, o que continua sendo fail closed — por isso não é preciso checar o tempo restante no código. A soma dos piores casos com retries (cerca de 22 s com SSM, ou 14 s sem) pode passar de 15 s; nesse caso a requisição vira 5xx, o que é aceitável.
 
 ## Segurança
 
-- Chave da OpenAI armazenada como `SecureString` no Parameter Store, lida pela Lambda via IAM role (não hardcoded). Parameter Store *standard tier* não tem custo por chamada, então buscar o parâmetro na invocação é aceitável — mas vale cachear em memória fora do handler (variável de módulo) para reduzir latência em invocações subsequentes do mesmo container.
-- **IAM least privilege:** a role de execução da Lambda deve ter permissões restritas ao mínimo necessário — `comprehend:DetectPiiEntities` e `ssm:GetParameter` limitado ao ARN exato do parâmetro da chave da OpenAI (nunca `ssm:GetParameter*` genérico ou `comprehend:*`).
-- Validar `modo` (aceitar somente 1, 2 ou 3) e tamanho máximo do texto recebido antes de chamar serviços externos.
-  - Fazer essa validação também via **Request Validator do API Gateway** (schema JSON), sem custo adicional — rejeita requisição malformada antes de invocar a Lambda, reduzindo custo e superfície de ataque.
-  - **Limite de tamanho:** o `DetectPiiEntities` aceita até **100 KB** de UTF-8 por chamada síncrona (conferir na documentação oficial) e a OpenAI Moderation tem limite próprio — ambos folgados. O `maxLength` efetivo deve ser definido pelo **custo por requisição** (ver "Custos"): um valor pequeno (ex.: 1.000–2.000 caracteres) basta para uma demo e fica bem abaixo dos limites downstream, para a Lambda nunca pagar uma chamada externa só para receber erro de tamanho.
-- **Aplicação das substituições:** ao trocar as entidades do Comprehend por `***`, aplicar as substituições **do fim para o início do texto** (ordenando por `BeginOffset` decrescente), senão os offsets das entidades seguintes se deslocam. Definir explicitamente um `Score` mínimo para aceitar uma entidade (ou decidir conscientemente não filtrar). O Comprehend pode errar (falso negativo/positivo); o README não deve apresentar o serviço como garantia de anonimização.
+- Chave da OpenAI armazenada como `SecureString` no Parameter Store, lida pela Lambda via IAM role (não hardcoded). Parameter Store *standard tier* não tem custo por chamada; a leitura é feita uma vez por container e cacheada em variável de módulo (fora do handler), para não pagar a latência do SSM em toda invocação.
+- **Chave da OpenAI fora do state:** o `aws_ssm_parameter` grava o valor com `value_wo` + `value_wo_version` (argumento *write-only*, Terraform ≥ 1.11 e um provider AWS que já suporte o atributo). A chave nunca vai para o `.tfstate`. Para rotacionar, basta trocar o GitHub Secret e incrementar `value_wo_version`.
+- **Key da OpenAI com dano limitado:** usar um **projeto dedicado** na OpenAI, com:
+  - key restrita com a menor permissão disponível;
+  - allowlist de modelos liberando só `omni-moderation-latest`, se o painel oferecer;
+  - limite de gasto mensal baixo.
+
+  Testar a Moderation com o limite ativo antes do primeiro uso, porque o limite pode bloquear até a Moderation gratuita.
+- **IAM least privilege:**
+  - Role da Lambda principal: `comprehend:DetectPiiEntities` e `ssm:GetParameter` limitado ao ARN exato do parâmetro da chave da OpenAI (nunca `ssm:GetParameter*` genérico ou `comprehend:*`).
+  - Role da Lambda kill switch: apenas `lambda:PutFunctionConcurrency` no ARN da função principal.
+- Validar `texto` e `modo` (aceitar somente 1, 2 ou 3) antes de chamar serviços externos.
+  - Fazer essa validação também via **Request Validator do API Gateway** (schema JSON), sem custo adicional — rejeita requisição malformada antes de invocar a Lambda, reduzindo custo e superfície de ataque. A Lambda repete a validação como defesa em profundidade.
+  - **Limite de tamanho: `maxLength` de 1.000 caracteres**, no Request Validator e na Lambda. O `DetectPiiEntities` aceita até 100 KB de UTF-8 por chamada síncrona e a OpenAI Moderation tem limite próprio — ambos muito acima disso, então a Lambda nunca paga uma chamada externa só para receber erro de tamanho. O valor é definido pelo custo: 1.000 caracteres = no máximo 10 unidades do Comprehend por chamada (ver "Custos").
+- O Comprehend pode errar (falso negativo/positivo); o README não deve apresentar o serviço como garantia de anonimização.
 - **Logs:** nunca logar `texto` ou `texto_censurado` em texto puro no CloudWatch (podem conter PII). Logar apenas metadados: modo, tamanho do texto, latência, status da resposta.
-  - Definir **retenção explícita nos log groups** (Lambda e API Gateway) via Terraform — ex.: 14 dias. Por padrão o CloudWatch Logs mantém os logs indefinidamente ("never expire").
-- Manter Parameter Store (não migrar para Secrets Manager) — Secrets Manager cobra por secret armazenado (~$0,40/mês) e por chamada; não traz benefício necessário aqui (a chave da OpenAI não precisa de rotação automática por enquanto), então o Parameter Store `SecureString` é a opção correta tanto por segurança quanto por custo.
+  - Definir **retenção explícita** (ex.: 14 dias) via Terraform nos log groups das duas Lambdas (principal e kill switch). Por padrão o CloudWatch Logs mantém os logs indefinidamente ("never expire"). Não há access log do API Gateway.
+- Manter Parameter Store (não migrar para Secrets Manager) — Secrets Manager cobra por secret armazenado (~$0,40/mês) e por chamada; não traz benefício necessário aqui (a rotação manual via `value_wo_version` basta), então o Parameter Store `SecureString` é a opção correta tanto por segurança quanto por custo.
   - Usar a **chave gerenciada pela AWS (`alias/aws/ssm`)** para a criptografia do `SecureString`, não uma KMS key própria (customer-managed key) — uma CMK custa ~US$ 1/mês só por existir, e não há necessidade de controle de rotação/política própria sobre a chave neste projeto.
 
 ## Custos e proteção contra gastos inesperados
 
-Como este é um projeto de portfólio (sem tráfego real esperado), o foco é evitar qualquer custo fixo desnecessário e conter a exposição a abuso/flood, já que cada requisição custa uma chamada à OpenAI e possivelmente ao Comprehend:
+Como este é um projeto de portfólio (sem tráfego real esperado), o foco é evitar qualquer custo fixo desnecessário e conter a exposição a abuso/flood, já que cada requisição nos modos 1 e 3 custa uma chamada ao Comprehend:
 
 - **Sem NAT Gateway** (ver "Rede — Lambda sem VPC"): todo o resto da stack é pay-per-use ou gratuito em repouso.
 - **Comprehend cobrado desde a primeira chamada:** a conta tem mais de 12 meses, então o free tier do Comprehend não se aplica (ver premissas em "Estimativa de custo"). Tratar como custo real ao dimensionar a quota do Usage Plan e o alerta do Budget.
-- **Reserved concurrency** na Lambda: limitar a concorrência máxima (ex.: 2–5 execuções simultâneas) para impor um teto de **paralelismo** mesmo em caso de abuso ou bug em loop. Sem custo adicional. **Atenção:** ela limita paralelismo, *não* o volume total de requisições — sozinha não é um teto de custo (ver "Pior caso de custo" abaixo). Além disso, a AWS só permite reservar até o valor de *Unreserved account concurrency* menos 100; se o limite de concorrência da conta for baixo (contas novas podem ter 10), o `apply` falha. **Conferir em Service Quotas → Lambda → "Concurrent executions" antes do primeiro deploy** e pedir aumento se necessário.
+- **Reserved concurrency de 3** na Lambda principal, **se a quota da conta permitir**: impõe um teto de **paralelismo** mesmo em caso de abuso ou bug em loop, sem custo adicional. Ela limita paralelismo, *não* o volume total de requisições — sozinha não é um teto de custo. A AWS só permite reservar até o valor de *Unreserved account concurrency* menos 100; se o limite de concorrência da conta for baixo (contas novas podem ter 10), o `apply` falha. **Conferir em Service Quotas → Lambda → "Concurrent executions" antes do primeiro deploy.** Se a quota não permitir, omitir a reserved concurrency: o throttle e o kill switch já limitam o custo. Nos dois casos, o teste do kill switch confirma que o `apply` restaura a função.
 - **AWS Budgets:** configurar um budget com alerta (ex.: em $5 ou $10) para ser avisado por e-mail antes de qualquer gasto relevante. Os dois primeiros budgets são gratuitos. **Budgets só avisa, não interrompe nada** e é avaliado poucas vezes por dia — por isso não substitui o kill switch abaixo.
-- **AWS Cost Anomaly Detection** (gratuito): complementa o Budgets. Anomaly Detection reage mais rápido a padrões fora do normal. Baixo esforço, vale ativar junto com o Budget (ativar já no bootstrap manual, antes do primeiro deploy).
-- **Usage Plan** com throttle (rate) e quota (requisições/dia ou /mês) definidos explicitamente — não deixar sem limite. **Mas a documentação da AWS é explícita: throttle e quota do Usage Plan são *best-effort*, não limites rígidos, e não devem ser usados como controle de custo.** Tratar como camada de redução de abuso, não como garantia.
-- **Kill switch automático (obrigatório):** um **alarme do CloudWatch** sobre `Invocations` da Lambda (ex.: mais de N invocações em 5–15 minutos, com N muito acima do uso esperado de demo) publica em um tópico **SNS**, que aciona uma pequena Lambda que chama `PutFunctionConcurrency` com `0` (throttle total da função). Isso transforma o custo máximo em algo limitado de fato, em vez de depender de um e-mail lido depois. A remoção do bloqueio é manual (reaplicar o Terraform ou remover a reserva). A Lambda do kill switch precisa de permissão apenas para `lambda:PutFunctionConcurrency` no ARN da função principal. Também vale um alarme de e-mail no mesmo tópico SNS.
-- **Pior caso de custo (documentar no README):** com a chave de demo exposta no bundle do frontend, qualquer visitante pode extraí-la. Com concorrência 5 e ~300 ms por chamada, o teto teórico é ~16 req/s ≈ 1,4 milhão de chamadas/dia; a US$ 0,0001 por unidade do Comprehend e mínimo de 3 unidades por chamada (**confirmar o preço vigente**), isso passaria de **~US$ 400/dia** sem o kill switch. Por isso: concorrência baixa (2–3), `maxLength` pequeno (cada chamada custa no mínimo 3 unidades independente do tamanho, então texto curto não reduz abaixo disso, mas evita custo maior) e kill switch ativo.
+- **AWS Cost Anomaly Detection** (gratuito): complementa o Budgets, reagindo mais rápido a padrões fora do normal. Ativar junto com o Budget, no bootstrap via Console, antes do primeiro deploy.
+- **Usage Plan:** um único plano e uma única key, com:
+  - throttle **rate 5 req/s, burst 10** — propositalmente **acima** do limite do kill switch. Se o throttle ficasse abaixo de 10 req/min, as requisições seriam barradas antes de chegar à Lambda e o kill switch nunca dispararia;
+  - **quota de 1.000 requisições/dia**, para cobrir abuso lento abaixo de 10/min.
+
+  **A documentação da AWS é explícita: throttle e quota do Usage Plan são *best-effort*, não limites rígidos, e não devem ser usados como controle de custo.** Tratar como camada de redução de abuso, não como garantia.
+- **Kill switch automático (obrigatório), calibrado para mais de 10 invocações/min:**
+  - Alarme do CloudWatch em `Invocations` da Lambda principal: `Sum > 10` (`GreaterThanThreshold`, threshold 10), período de 60 s, 1 de 1 datapoint.
+  - `treat_missing_data = notBreaching`. Depois do kill, as invocações caem a zero e o alarme volta sozinho para `OK`. Assim, se a stack for religada e o abuso continuar, ele dispara de novo.
+  - A reação leva cerca de 1–3 minutos.
+  - Ação: SNS → Lambda kill switch → `PutFunctionConcurrency` com `0` (throttle total da função). A permissão é só `lambda:PutFunctionConcurrency` no ARN da função principal. O mesmo tópico SNS tem uma assinatura de e-mail. Como o tópico é recriado a cada `apply` depois de um `destroy`, a assinatura nasce pendente: **confirmar o e-mail da AWS depois de cada `apply` que recria a stack**, senão o aviso não chega. A Lambda do kill switch funciona mesmo sem a confirmação.
+  - **Religar = rodar o workflow `apply` manualmente.** O Terraform detecta a concorrência em 0 e volta ao que o `.tf` define: 3, ou sem reserva se a reserved concurrency tiver sido omitida. Não existe outro caminho de religar.
+  - O `apply` sozinho mantém a mesma API key. Se o kill veio de uso da key por terceiros, religar com `destroy` + `apply`, que gera uma key nova.
+  - Se o abuso persistir mesmo com a Lambda zerada (as requisições ainda custam API Gateway), rodar o `destroy`.
+- **Pior caso de custo (documentar no README):**
+  - **Flood:** até o kill switch disparar (cerca de 3 min no throttle de 5 req/s ≈ 900 requisições × no máximo 10 unidades do Comprehend), menos de **US$ 1**.
+  - **Abuso lento abaixo do gatilho:** limitado pela quota diária (1.000 requisições × até 10 unidades do Comprehend) a cerca de **US$ 1/dia**, com o Budget e o Cost Anomaly Detection avisando. Como a quota é best-effort, esse limite também é.
 - **AWS WAF foi avaliado e descartado por enquanto:** tem custo fixo mensal (~$5-6 de Web ACL + $1/regra + $0,60 por milhão de requisições) mesmo sem tráfego, o que não se justifica neste estágio. **Essa decisão só se sustenta com o kill switch acima** — Usage Plan + Budget sozinhos não bastam, já que a AWS não os considera limites rígidos. Reavaliar (WAF com rate-based rule) se o projeto sair do portfólio e for para produção com tráfego real.
 - **Infraestrutura como código com `destroy` fácil:** como o objetivo é demonstração (não uso contínuo), definir a stack via Terraform permite rodar `terraform destroy` quando o projeto não estiver sendo mostrado a ninguém, garantindo custo zero absoluto fora dos períodos de demonstração, e `terraform apply` para recriar tudo em minutos. Como nada roda localmente (ver "Execução via CI/CD"), tanto `apply` quanto `destroy` são disparados manualmente como workflows do GitHub Actions.
 
@@ -142,75 +203,68 @@ Estimativa **conservadora** para a stack no ar (região `us-east-1`, valores em 
 
 | Componente | Preço | Custo por requisição |
 |---|---|---|
-| Comprehend `DetectPiiEntities` (modos 1 e 3) | US$ 0,0001 por unidade de 100 caracteres, **mínimo 3 unidades** por chamada | texto ≤ 300 caracteres: **US$ 0,0003**; texto de 2.000 caracteres (20 unidades): **US$ 0,0020** |
+| Comprehend `DetectPiiEntities` (modos 1 e 3) | US$ 0,0001 por unidade de 100 caracteres, **mínimo 3 unidades** por chamada | texto ≤ 300 caracteres: **US$ 0,0003**; texto de 1.000 caracteres (10 unidades, o máximo aceito): **US$ 0,0010** |
 | API Gateway (REST) | US$ 3,50 por milhão de requisições | US$ 0,0000035 |
-| Lambda (256 MB, ~500 ms, x86) | US$ 0,20 por milhão de requisições + duração por GB-s (< US$ 0,000003 por chamada) | ~US$ 0,0000023 |
+| Lambda (256 MB, ~300 ms, x86) | US$ 0,20 por milhão de requisições + duração por GB-s (~US$ 0,0000013 por chamada) | ~US$ 0,0000015 |
 | CloudWatch Logs (só metadados, ~1 KB por chamada) | US$ 0,50 por GB ingerido | ~US$ 0,0000005 |
 | OpenAI Moderation (modos 2 e 3) | gratuita | US$ 0 |
 
 - **Sem free tier:** a conta tem mais de 12 meses, então o free tier de 12 meses do Comprehend (50 mil unidades/mês de `DetectPiiEntities`) e do API Gateway não se aplica. O free tier permanente da Lambda (1 milhão de requisições e 400 mil GB-s por mês) e o de 5 GB do CloudWatch Logs cobririam todos os volumes abaixo, mas foram ignorados por conservadorismo — o custo real da Lambda e dos logs tende a zero.
-- **Custo fixo mensal (independe do tráfego): ~US$ 0.** Os 2 alarmes do kill switch cabem nos 10 alarmes gratuitos do CloudWatch; Parameter Store *standard* e a chave `alias/aws/ssm` não cobram; CloudTrail (management events) e os dois primeiros Budgets são gratuitos; S3 do state e do frontend + CloudFront somam centavos por mês.
+- **Custo fixo mensal (independe do tráfego): ~US$ 0.** O alarme do kill switch cabe nos 10 alarmes gratuitos do CloudWatch; Parameter Store *standard*, a chave `alias/aws/ssm` e o tópico SNS não cobram por existir; os dois primeiros Budgets são gratuitos; o bucket S3 do state soma centavos por mês.
 - **O Comprehend domina o custo** (~98% da requisição nos modos 1 e 3). O modo 2 (só OpenAI Moderation) não chama o Comprehend e custa uma fração disso.
 
 **Custo estimado por cenário de uso (custo/mês):**
 
-| Requisições/dia | Modo 2 (só OpenAI, sem Comprehend) | Modos 1/3, texto ≤ 300 car. (demo típica) | Modos 1/3, texto de 2.000 car. (pior caso legítimo) |
+| Requisições/dia | Modo 2 (só OpenAI, sem Comprehend) | Modos 1/3, texto ≤ 300 car. (demo típica) | Modos 1/3, texto de 1.000 car. (máximo aceito) |
 |---:|---:|---:|---:|
 | 0 | US$ 0,00 | US$ 0,00 | US$ 0,00 |
-| 1 | US$ 0,0002 | US$ 0,01 | US$ 0,06 |
-| 5 | US$ 0,0009 | US$ 0,05 | US$ 0,30 |
-| 10 | US$ 0,002 | US$ 0,09 | US$ 0,60 |
-| 100 | US$ 0,02 | US$ 0,92 | US$ 6,02 |
-| 500 | US$ 0,09 | US$ 4,59 | US$ 30,09 |
-| 1.000 | US$ 0,17 | US$ 9,19 | US$ 60,19 |
+| 1 | US$ 0,0002 | US$ 0,01 | US$ 0,03 |
+| 5 | US$ 0,0008 | US$ 0,05 | US$ 0,15 |
+| 10 | US$ 0,002 | US$ 0,09 | US$ 0,30 |
+| 100 | US$ 0,02 | US$ 0,92 | US$ 3,02 |
+| 500 | US$ 0,08 | US$ 4,58 | US$ 15,08 |
+| 1.000 (quota diária) | US$ 0,16 | US$ 9,16 | US$ 30,16 |
 
 **Como usar esta tabela:**
-- Uso legítimo de demonstração (dezenas de chamadas por dia) custa **centavos por mês**. O risco financeiro do projeto não está no uso normal, e sim no abuso — o cenário de ~US$ 400/dia descrito em "Pior caso de custo" está muito acima de qualquer linha desta tabela, e é por isso que o kill switch é obrigatório.
-- **Calibrar o Budget:** com texto curto, um Budget de US$ 5/mês dispara por volta de 500 requisições/dia sustentadas; um de US$ 10, por volta de 1.000/dia. Como esses volumes já seriam muito acima do esperado para uma demo, qualquer alerta neles indica uso anormal.
-- **Calibrar o kill switch:** o limite `N` do alarme de invocações deve ficar bem acima da última linha desta tabela que você considera uso legítimo (ex.: se a demo nunca deve passar de ~100 chamadas/dia, `N` na ordem de algumas centenas por hora já é anormal).
+- Uso legítimo de demonstração (dezenas de chamadas por dia) custa **centavos por mês**. O risco financeiro do projeto não está no uso normal, e sim no abuso — coberto em "Pior caso de custo": o kill switch limita um flood a menos de US$ 1, e a quota limita o abuso lento a cerca de US$ 1/dia (a última linha da tabela).
+- **Calibrar o Budget:** um Budget de US$ 5/mês dispara por volta de 550 requisições/dia sustentadas com texto curto, ou de 170/dia com texto de 1.000 caracteres. Como esses volumes já seriam muito acima do esperado para uma demo, qualquer alerta neles indica uso anormal.
+- **Kill switch:** o limite é fixo em **mais de 10 invocações por minuto**. Uma demo feita à mão não chega perto disso; qualquer coisa acima é tratada como abuso.
 - Se o projeto sair do portfólio com tráfego real, refazer a conta: acima de ~milhares de requisições/dia o Comprehend continua dominando.
 
 ## Execução via CI/CD (GitHub Actions) — tudo roda na nuvem
 
-O objetivo é que nada do sistema — aplicação ou infraestrutura — dependa de rodar/manter algo na máquina local; tudo vive na AWS e o deploy do dia a dia (`plan`/`apply`/`destroy`) é automatizado via workflow do **GitHub Actions**, o que elimina o problema clássico de credenciais da AWS armazenadas/vazadas em uma máquina de desenvolvedor.
+O objetivo é que nada do sistema — aplicação ou infraestrutura — dependa de rodar/manter algo na máquina local; tudo vive na AWS e o deploy (`apply`/`destroy`) é feito via workflow do **GitHub Actions**, o que elimina o problema clássico de credenciais da AWS armazenadas/vazadas em uma máquina de desenvolvedor.
 
-**Exceção pontual — bootstrap inicial:** antes de o primeiro workflow existir, alguém precisa criar manualmente o IAM OIDC Identity Provider, a IAM Role de deploy e o bucket S3 do state (ver passo 2 de "Próximos passos") — é um problema do tipo "ovo e galinha", já que o CI ainda não tem como se autenticar sozinho. Esse passo único é feito **via Console da AWS** (não via AWS CLI local com credenciais salvas), para não contradizer o objetivo de não manter credenciais de longa duração numa máquina local. Depois desse bootstrap, nenhum comando de deploy roda fora do GitHub Actions.
+**Exceção pontual — bootstrap inicial:** antes de o primeiro workflow existir, alguém precisa criar manualmente o IAM OIDC Identity Provider, a IAM Role de deploy, o bucket S3 do state, o Budget e o Cost Anomaly Detection (ver passo 2 de "Próximos passos") — é um problema do tipo "ovo e galinha", já que o CI ainda não tem como se autenticar sozinho. Esse passo único é feito **via Console da AWS** (não via AWS CLI local com credenciais salvas), para não contradizer o objetivo de não manter credenciais de longa duração numa máquina local. Depois desse bootstrap, nenhum comando de deploy roda fora do GitHub Actions. Como esses recursos não são do Terraform, o `destroy` não os remove.
 
-- **Autenticação via OIDC, sem access keys estáticas:** configurar um **IAM OIDC Identity Provider** para `token.actions.githubusercontent.com` e uma **IAM Role** cuja trust policy restringe o assume-role ao repositório (e, idealmente, à branch `main` para `apply`/`destroy`) via `sub` no token do GitHub Actions. O workflow assume essa role via `aws-actions/configure-aws-credentials` com `id-token: write`. Não existe nenhum `AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY` salvo em secret do GitHub — remove o risco de uma chave de longa duração vazar do repositório ou dos logs do workflow.
-- **Permissões da role de deploy:** essa role é diferente e mais ampla que a role de execução da Lambda (precisa criar/alterar Lambda, API Gateway, IAM roles, SSM parameters, S3, CloudFront, log groups) — mesmo assim, escopar por serviço/prefixo de recurso sempre que possível, evitando `*:*`.
-  - **Risco de escalonamento de privilégio:** uma role que pode criar/alterar roles IAM pode conceder a si mesma (ou a terceiros) permissões maiores. Mitigar com uma **permissions boundary** aplicada às roles criadas pelo Terraform (limitando o teto de permissões que elas podem ter) e restringindo `iam:CreateRole`/`iam:PutRolePolicy`/`iam:AttachRolePolicy` a um prefixo de nome (ex.: `guardrails-*`).
-  - **Trust policy do OIDC:** o `sub` do token deve ser específico — para `apply`/`destroy`, usar `repo:<owner>/<repo>:environment:<nome-do-environment>` (amarrado ao GitHub Environment com required reviewer) ou `repo:<owner>/<repo>:ref:refs/heads/main`; nunca um wildcard como `repo:<owner>/<repo>:*`. A role de `plan` (somente leitura) pode aceitar `pull_request`, mas sem nenhuma permissão de escrita. Como o repositório é público, lembrar que PRs de forks não recebem `id-token: write` por padrão — manter assim.
-- **State do Terraform remoto (obrigatório, já que não há máquina local persistente):** backend em **S3** com **versionamento habilitado** no bucket (permite reverter um state corrompido) e **locking nativo do S3** (Terraform ≥ 1.10, `use_lockfile = true`) para evitar concorrência entre execuções — dispensa criar uma tabela DynamoDB só para lock. O bucket de state guarda dados sensíveis: **o valor da chave da OpenAI (`SecureString`) aparece em texto puro no `terraform.tfstate`** — marcar a variável como `sensitive` só a esconde dos logs, não do state. Por isso o bucket **deve** (não "se possível") ter: acesso público bloqueado (Block Public Access nas 4 opções), criptografia padrão SSE-S3/KMS, versionamento, e uma bucket policy que restrinja o acesso apenas às roles de deploy/plan. Nunca deve ser público nem fazer parte do frontend de demo. Custo: armazenamento de um arquivo de poucos KB, irrelevante.
-- **Fluxo dos workflows:**
-  - Pull request → `terraform plan` (somente leitura/diff, comentado no PR) — usa uma role com permissões só de leitura/plan.
-  - Merge na `main` → `terraform apply`, disparado automaticamente ou com aprovação manual via [GitHub Environments](https://docs.github.com/actions/deployment/targeting-different-environments/using-environments-for-deployment) com *required reviewer* — importante para nunca aplicar uma mudança de IAM/custo sem revisão consciente.
-  - `terraform destroy` como workflow separado, disparado manualmente (`workflow_dispatch`), usado para zerar custo entre demonstrações.
-- **Segredo da OpenAI:** o valor da API key da OpenAI é passado ao Terraform como uma **GitHub Actions Secret** (`OPENAI_API_KEY`), nunca commitado em `.tfvars`, e gravado no Parameter Store como `SecureString` pelo próprio `apply` — o valor em si nunca aparece em log do workflow (Terraform sensibiliza variáveis marcadas como `sensitive`).
+- **Workflows:**
+  - `apply`: **só manual** (`workflow_dispatch`). Nunca dispara em merge na `main`, para que nenhum deploy religue a stack depois de um kill. Disparar o `apply` manualmente já é a aprovação.
+  - `destroy`: manual (`workflow_dispatch`), usado para zerar custo entre demonstrações.
+  - `test`: em pull request, roda os testes unitários. Sem credenciais AWS (não pede `id-token: write` nem assume a role).
+- **Autenticação via OIDC, sem access keys estáticas:** configurar um **IAM OIDC Identity Provider** para `token.actions.githubusercontent.com` e **uma única IAM Role de deploy**, assumida via `aws-actions/configure-aws-credentials` com `id-token: write`. Não existe nenhum `AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY` salvo em secret do GitHub — remove o risco de uma chave de longa duração vazar do repositório ou dos logs do workflow.
+  - **Trust policy:** `sub = repo:<owner>/<repo>:ref:refs/heads/main`, nunca um wildcard como `repo:<owner>/<repo>:*`. Um `workflow_dispatch` disparado a partir de outra branch recebe outro `sub` e não assume a role. Os jobs não usam `environment:`, senão o `sub` passa a ter o formato `environment:<nome>` e deixa de casar com a trust policy.
+- **Permissões da role de deploy:** essa role é diferente e mais ampla que as roles de execução das Lambdas. Escopar por serviço/prefixo de recurso sempre que possível, evitando `*:*`:
+  - permissões por serviço: Lambda, API Gateway, SSM, CloudWatch (logs e alarme), SNS, IAM e o bucket de state;
+  - ações de IAM sobre roles e políticas (criar, ler, alterar, anexar, desanexar e apagar, porque o `destroy` também precisa delas) restritas ao prefixo `guardrails-*`, e `iam:PassRole` restrito ao mesmo prefixo, com `iam:PassedToService = lambda.amazonaws.com`.
+  - **Risco residual aceito:** o prefixo só restringe o **nome** das roles, não as permissões dadas a elas. A role de deploy ainda consegue criar uma `guardrails-*` com permissões amplas. A mitigação real é o `sub` restrito à `main`: só código que chegou à `main` (ou seja, do único desenvolvedor) assume a role. É um risco aceito conscientemente no lugar de uma permissions boundary, e o README deve dizer isso.
+- **State do Terraform remoto (obrigatório, já que o CI não tem disco persistente):** backend em **S3** com **versionamento habilitado** no bucket (permite reverter um state corrompido) e **locking nativo do S3** (`use_lockfile = true`) para evitar concorrência entre execuções — dispensa criar uma tabela DynamoDB só para lock. A chave da OpenAI **não** vai para o state (`value_wo`, ver "Segurança"), mas o state ainda guarda dados sensíveis, como o valor da API key gerada pelo API Gateway. Por isso o bucket **deve** ter: acesso público bloqueado (Block Public Access nas 4 opções), criptografia padrão SSE-S3/KMS, versionamento, e uma bucket policy que restrinja o acesso à role de deploy e ao usuário admin usado no Console. Sem essa exceção, quem usa o Console fica sem acesso ao state, por exemplo para investigar um `destroy` que falhou. Custo: armazenamento de um arquivo de poucos KB, irrelevante.
+- **Segredo da OpenAI:** o valor da API key da OpenAI é passado ao Terraform a partir de uma **GitHub Actions Secret** (`OPENAI_API_KEY`), nunca commitado em `.tfvars`, numa variável `sensitive` (e `ephemeral`), e gravado no Parameter Store como `SecureString` via `value_wo` pelo próprio `apply`. O valor não aparece nos logs do workflow nem no state.
 
 ## Boas práticas de repositório (projeto open source)
 
 Como o código vai para um repositório público, alguns cuidados evitam vazamento de segredo e ruído no histórico do Git:
 
 - **`.gitignore`** cobrindo `*.tfstate`, `*.tfstate.backup`, `.terraform/`, `*.tfvars` (exceto um `terraform.tfvars.example` com valores fictícios, versionado como referência).
-- **Nenhum Account ID, ARN real ou valor de segredo hardcoded** nos arquivos `.tf` versionados — usar variáveis (`var.aws_account_id`, data sources como `aws_caller_identity`, etc.).
+- **Nenhum valor de segredo hardcoded** nos arquivos versionados (incluindo a API key do API Gateway, que nunca vai para o README).
+- **Nenhum Account ID ou ARN real hardcoded** nos arquivos `.tf` — usar variáveis e data sources como `aws_caller_identity`. O motivo aqui é **portabilidade**, não sigilo: o Account ID não é segredo, e ele aparece nos logs do Actions de qualquer forma.
 
-## Acesso de demonstração (portfólio)
+## Acesso de demonstração
 
-Como este projeto usa `x-api-key`, um visitante do GitHub (recrutador, avaliador) não tem uma chave por padrão. **Oferecer os dois métodos de acesso, que não são excludentes**, ambos usando a **mesma key de demo e a mesma Usage Plan "demo"**:
-
-1. **Frontend estático de demo (caminho principal)** (S3 + CloudFront, dentro do free tier) chamando a API diretamente do navegador. A key fica exposta no JS do bundle, então precisa de uma **Usage Plan separada, "demo", com quota agressiva** (ex.: poucas dezenas de requisições/dia) — nunca a mesma quota/chave usada para testes próprios.
-   - O bucket S3 deve ser **privado**, servido pelo CloudFront via **Origin Access Control (OAC)** — nunca um bucket com acesso público direto. Sem custo adicional, evita que alguém contorne o CloudFront (e qualquer limite/cache configurado nele) acessando o S3 diretamente.
-2. **`curl`/Postman documentado no README (caminho secundário):** exemplo de chamada para cada um dos três modos, usando a mesma chave de demo publicada no próprio README. Atende quem quer ver o contrato da API sem passar pelo frontend.
-
-**Por que a mesma key/Usage Plan nos dois:**
-- A key de demo já é pública por design (está no bundle), então publicá-la no README não amplia a exposição.
-- Uma segunda key com quota própria dobraria o teto de requisições da demo sem necessidade. Com uma só, a quota vale para o conjunto dos dois caminhos.
-- Rotacionar em caso de abuso é trocar um único valor (Terraform + bundle + README).
-
-**Limites a ter claros:**
-- O `curl` chama a API direto, sem passar pelo CloudFront/OAC. Não é um risco novo — a API já é chamável direto com a key do bundle. O CloudFront/OAC protege o bucket S3, não a API.
-- O controle de custo real continua sendo o reserved concurrency baixo e, principalmente, o kill switch automático; a quota da Usage Plan ajuda, mas é best-effort (ver "Custos"). Por isso o kill switch precisa estar testado antes de publicar qualquer um dos dois acessos.
-- `terraform destroy` derruba os dois métodos juntos. O README deve deixar claro que o repositório é a definição da infraestrutura, não um ambiente permanentemente no ar — a demo pode estar desligada fora dos períodos de demonstração.
+- A demonstração é feita na hora, com a stack recém-criada pelo `apply`: `curl` ou Postman.
+- A API key **não é publicada** no README nem em nenhum arquivo. Pegar o valor no Console (API Gateway → API Keys → Show) e repassar diretamente à pessoa.
+- O README traz exemplos de `curl` dos três modos com `<API_KEY>` e `<URL>` como placeholders, e avisa que a API só fica no ar durante demonstrações — o repositório é a definição da infraestrutura, não um ambiente permanentemente no ar.
+- A key muda a cada `destroy` + `apply`, já que o recurso é recriado. Um `apply` sobre a stack existente mantém a mesma key. Nos dois casos nada quebra, porque nenhum arquivo depende do valor dela.
+- O throttle, a quota e o kill switch valem também durante a demo: mandar mais de 10 requisições em 1 minuto derruba a API até o próximo `apply`.
 
 ## Ameaças e mitigações
 
@@ -218,35 +272,32 @@ Resumo das principais ameaças consideradas e como o design responde a cada uma 
 
 | Ameaça | Mitigação |
 |---|---|
-| Vazamento/uso indevido da API key de demo (pública por design) | Usage Plan "demo" separada com quota baixa (best-effort); custo contido pelo kill switch, não pela key |
-| Abuso/flood gerando custo inesperado | Reserved concurrency baixa + **kill switch automático** + Usage Plan (best-effort) + Budgets (só avisa) + Cost Anomaly Detection |
-| Escalonamento de privilégio via role de deploy (que cria roles IAM) | Permissions boundary + `iam:*` restrito a prefixo de nome + `sub` do OIDC específico (Environment/branch `main`) |
-| Chave da OpenAI legível no `.tfstate` (texto puro) | Bucket de state privado, criptografado, versionado, com bucket policy restrita às roles de deploy/plan |
-| Vazamento da chave da OpenAI | `SecureString` no Parameter Store, nunca hardcoded; acesso restrito ao ARN exato do parâmetro |
-| Escalonamento de privilégios via IAM da Lambda | Least privilege: `comprehend:DetectPiiEntities` e `ssm:GetParameter` no ARN exato, nunca wildcard |
+| API key vazada | A key não é publicada; a stack só fica no ar durante demos; throttle, quota e kill switch se aplicam. Para invalidar uma key vazada, `destroy` + `apply` |
+| Abuso/flood gerando custo inesperado | **Kill switch** em mais de 10 invocações/min + religamento só por `apply` manual + throttle/quota do Usage Plan (best-effort) + Budgets (só avisa) + Cost Anomaly Detection |
+| Escalonamento de privilégio via role de deploy (que cria roles IAM) | `sub` do OIDC restrito à `main` (mitigação principal) + ações de IAM e `iam:PassRole` restritos ao prefixo `guardrails-*`. Risco residual aceito e documentado: a role ainda pode criar uma `guardrails-*` com permissões amplas |
+| Chave da OpenAI legível no `.tfstate` | `value_wo`: a chave não vai para o state |
+| Vazamento da chave da OpenAI | `SecureString` no Parameter Store, nunca hardcoded; acesso restrito ao ARN exato do parâmetro; projeto dedicado na OpenAI, key restrita e limite de gasto |
+| Escalonamento de privilégios via IAM das Lambdas | Least privilege: `comprehend:DetectPiiEntities` e `ssm:GetParameter` no ARN exato na principal, e só `lambda:PutFunctionConcurrency` no ARN da principal na do kill switch; nunca wildcard |
 | Vazamento de PII via logs | Apenas metadados (modo, tamanho, latência, status), nunca `texto`/`texto_censurado` |
-| Envio de PII em texto aberto para terceiro externo (OpenAI) | OpenAI recebe o texto já com PII substituída pelo Comprehend |
+| Envio de PII em texto aberto para terceiro externo (OpenAI) | No modo 3, a OpenAI recebe o texto já com PII substituída pelo Comprehend. **Exceção:** no modo 2, o texto original vai para a OpenAI (documentado no README) |
 | Prompt injection via texto do usuário | Nenhum modelo generativo decide o que censurar |
 | Falha de um serviço de moderação liberando conteúdo não censurado | Fail-closed: erro/timeout retorna 5xx |
 | Requisição malformada consumindo invocação da Lambda | Request Validator do API Gateway (`modo` e tamanho) |
 | Custo fixo por hora sem tráfego (ex.: NAT Gateway) | Lambda sem VPC |
 | Credenciais AWS de longa duração vazadas | Deploy via GitHub Actions com **OIDC** (sem access keys estáticas); bootstrap único via Console AWS |
 | Segredo vazado via `.tfstate` ou `.tfvars` commitado no repositório público | `.gitignore` cobrindo state e `.tfvars`; state remoto em S3 privado |
-| Acesso ao frontend de demo (S3) contornando o CloudFront | Bucket S3 privado + Origin Access Control (OAC) |
 
 ## Próximos passos
 
 1. Adicionar ao repositório o `.gitignore` (ver "Boas práticas de repositório") e o esqueleto do Terraform, **sem VPC** para a Lambda.
-2. Criar manualmente **via Console da AWS** (uma única vez — ver "Execução via CI/CD") o **IAM OIDC Identity Provider** do GitHub Actions, a **IAM Role de deploy** com trust policy restrita ao repositório e o **bucket S3 privado** para o state remoto do Terraform.
-3. Configurar os workflows do GitHub Actions (`plan` em PR, `apply` protegido por GitHub Environment em merge na `main`, `destroy` manual via `workflow_dispatch`) usando a role OIDC do passo 2.
-   - Antes do `apply`: conferir em Service Quotas o limite de concorrência da conta e confirmar o preço vigente do Comprehend (ver "Custos").
-4. Definir o restante da infraestrutura como código em **Terraform**: Lambda (IAM restrito, reserved concurrency baixa, log group com retenção), API Gateway (REST API, Request Validator com `maxLength` — ver "Segurança", API Keys geradas pelo API Gateway, Usage Plans incluindo a "demo", CORS habilitado para o frontend de demo).
-   - Para o access log do API Gateway funcionar, configurar `aws_api_gateway_account` com uma role do CloudWatch Logs (configuração por conta/região, fácil de esquecer).
-5. Configurar AWS Budgets, Cost Anomaly Detection e o **kill switch automático** (ver "Custos"). Testar o kill switch de fato (simulando o alarme) antes de publicar o frontend de demo.
-6. Implementar detecção de PII (Comprehend).
-7. Implementar detecção de conteúdo inapropriado (OpenAI Moderation), com a `OPENAI_API_KEY` chegando ao Terraform via GitHub Actions Secret.
-8. Implementar a substituição por `***` e montar a resposta, com fail-closed em caso de erro.
-9. Testar os três modos com casos reais (via workflow/ambiente de demo, já que não há execução local).
-10. Configurar logs (sem PII) e alarmes básicos de monitoramento (CloudWatch: erros, throttles, duração); habilitar CloudTrail (management events, gratuito) para auditoria básica da conta.
-11. Implementar o acesso de demonstração: frontend estático com S3+CloudFront+OAC, com a mesma key/Usage Plan "demo" usada pelos exemplos de `curl` do README (ver "Acesso de demonstração").
-12. Escrever o README com arquitetura, decisões de segurança/custo (incluindo a limitação de região/LGPD e o pior caso de custo), a seção "Ameaças e mitigações", exemplos de `curl` para os três modos e o aviso de que a demo pode estar desligada.
+2. Bootstrap **via Console da AWS** (uma única vez — ver "Execução via CI/CD"): IAM OIDC Identity Provider do GitHub Actions, role de deploy (prefixo `guardrails-*`, `sub` na `main`), bucket S3 privado do state, Budget e Cost Anomaly Detection. Conferir em Service Quotas o limite de concorrência da conta. Na OpenAI: projeto dedicado, key restrita e limite de gasto, testando a Moderation com o limite ativo.
+3. Workflows do GitHub Actions: `apply` e `destroy` manuais (`workflow_dispatch`), `test` em pull request.
+4. Terraform:
+   - Lambda Python, empacotada com `archive_file`, com HTTP via `urllib` (sem dependências), IAM restrito, timeout de 15 s, log group com retenção e reserved concurrency de 3 se a quota permitir;
+   - API Gateway REST, com Request Validator (`maxLength` 1.000), uma API key gerada pelo API Gateway e um Usage Plan (rate 5, burst 10, quota 1.000/dia);
+   - parâmetro SSM `SecureString` com `value_wo`, a partir do GitHub Secret `OPENAI_API_KEY`.
+5. Kill switch: alarme (mais de 10/min, `notBreaching`), SNS com assinatura de e-mail, Lambda com `PutFunctionConcurrency` e log group com retenção.
+6. Implementar Comprehend (lista de entidades e score 0,5), OpenAI Moderation, substituição por `***` com offset decrescente, timeouts, fail closed e logs só com metadados.
+7. Testes unitários com mocks: substituição, combinação do modo 3, fail closed, validação.
+8. Confirmar a assinatura de e-mail do SNS. Depois, teste real dos três modos e **teste do kill switch**: mandar 15–20 requisições **em sequência** (uma depois da outra, não em paralelo), todas dentro de 1 minuto. Em paralelo, o burst de 10 e a reserved concurrency de 3 barram parte delas antes da invocação, e o `Sum` pode não passar de 10. Depois, confirmar a concorrência em 0 e o e-mail recebido, rodar o `apply` e confirmar que a stack voltou.
+9. README: arquitetura, limitação de região/LGPD, só inglês, exceção do modo 2, pior caso de custo, risco residual da role de deploy, ameaças e mitigações, `curl` com placeholders e aviso de que a API só fica no ar durante demos.
