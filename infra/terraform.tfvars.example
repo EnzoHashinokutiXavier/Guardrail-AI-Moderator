@@ -1,0 +1,6 @@
+# Exemplo de variáveis para execução local do Terraform.
+# Copie para terraform.tfvars (ignorado pelo .gitignore) e preencha.
+# No CI, os valores vêm dos GitHub Secrets OPENAI_API_KEY e ALERT_EMAIL.
+
+openai_api_key = "sk-exemplo-nao-e-uma-chave-real"
+alert_email    = "alertas@example.com"

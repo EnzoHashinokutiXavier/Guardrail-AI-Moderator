@@ -64,9 +64,9 @@ Marque `[x]` conforme for concluindo.
 
 ### 2.1 Arquivos base
 - [x] Criar o `.gitignore` (`*.tfstate`, `*.tfstate.backup`, `.terraform/`, `*.tfvars`)
-- [ ] Criar o `terraform.tfvars.example` com valores fictícios
+- [x] Criar o `terraform.tfvars.example` com valores fictícios
 - [x] Criar o `LICENSE` com o texto oficial da PolyForm Noncommercial 1.0.0
-- [ ] Adicionar a linha `Required Notice: Copyright 2026 <nome do titular>` no `LICENSE`
+- [x] Adicionar a linha `Required Notice: Copyright 2026 <nome do titular>` no `LICENSE`
 
 ### 2.2 Estrutura de pastas
 - [ ] Criar `src/moderador/`
