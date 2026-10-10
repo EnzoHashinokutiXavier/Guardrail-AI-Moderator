@@ -76,8 +76,8 @@ Marque `[x]` conforme for concluindo.
 - [x] Criar `.github/workflows/`
 
 ### 2.3 Configurações do GitHub
-- [ ] Ativar secret scanning
-- [ ] Ativar push protection
+- [X] Ativar secret scanning
+- [X] Ativar push protection
 
 ---
 
