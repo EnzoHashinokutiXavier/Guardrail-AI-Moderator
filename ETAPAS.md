@@ -69,11 +69,11 @@ Marque `[x]` conforme for concluindo.
 - [x] Adicionar a linha `Required Notice: Copyright 2026 <nome do titular>` no `LICENSE`
 
 ### 2.2 Estrutura de pastas
-- [ ] Criar `src/moderador/`
-- [ ] Criar `src/kill_switch/`
-- [ ] Criar `tests/`
-- [ ] Criar `infra/`
-- [ ] Criar `.github/workflows/`
+- [x] Criar `src/moderador/`
+- [x] Criar `src/kill_switch/`
+- [x] Criar `tests/`
+- [x] Criar `infra/`
+- [x] Criar `.github/workflows/`
 
 ### 2.3 Configurações do GitHub
 - [ ] Ativar secret scanning
