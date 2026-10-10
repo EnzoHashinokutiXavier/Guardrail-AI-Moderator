@@ -92,13 +92,17 @@ Marque `[x]` conforme for concluindo.
 - [ ] Seguir o resto do bootstrap como admin (root só para tarefas exclusivas de root)
 
 ### 3.1 AWS — acesso do CI
-- [ ] Criar o IAM OIDC Identity Provider para `token.actions.githubusercontent.com`
-- [ ] Criar a role de deploy com trust policy `sub = repo:<owner>/<repo>:ref:refs/heads/main`
-- [ ] Anexar as permissões da role de deploy, escopadas ao prefixo `guardrails-*`
-- [ ] Restringir `iam:PassRole` ao prefixo `guardrails-*` com `iam:PassedToService = lambda.amazonaws.com`
+- [x] Criar o IAM OIDC Identity Provider para `token.actions.githubusercontent.com`
+- [x] Criar a role de deploy com trust policy `sub = repo:<owner>/<repo>:ref:refs/heads/main`
+- [x] Nomear a role de deploy fora do prefixo `guardrails-*` (para ela não poder alterar as próprias permissões)
+- [x] Ajustar a trust policy gerada pelo Console para `StringEquals` com um único `sub` exato (o assistente gerou `StringLike` com valor duplicado)
+- [x] Anexar as permissões da role de deploy, escopadas ao prefixo `guardrails-*`
+- [x] Restringir `iam:PassRole` ao prefixo `guardrails-*` com `iam:PassedToService = lambda.amazonaws.com`
+- [x] Usar policy inline (`deploy-permissions`) em vez de managed policy, para a role não poder editar as próprias permissões
+- [x] Incluir na policy o acesso ao bucket do state (`guardrails-tfstate-moderator`), que ainda será criado no 3.2
 
 ### 3.2 AWS — bucket do state
-- [ ] Criar o bucket S3 do state
+- [ ] Criar o bucket S3 do state (`guardrails-tfstate-moderator`, em `us-east-1`)
 - [ ] Ativar Block Public Access (4 opções)
 - [ ] Ativar criptografia padrão
 - [ ] Ativar versionamento
