@@ -83,6 +83,14 @@ Marque `[x]` conforme for concluindo.
 
 ## 3. Bootstrap (uma única vez, via Console)
 
+### 3.0 AWS — usuário admin
+- [x] Ativar MFA no root e confirmar que ele não tem access keys
+- [x] Ativar o acesso de usuários IAM ao Billing (Account → IAM user and role access to Billing information)
+- [x] Criar o grupo `admins` com a policy `AdministratorAccess`
+- [x] Criar o usuário admin com acesso ao Console, no grupo `admins`, sem o prefixo `guardrails-*` e sem access keys
+- [x] Logar como admin e ativar MFA no usuário
+- [ ] Seguir o resto do bootstrap como admin (root só para tarefas exclusivas de root)
+
 ### 3.1 AWS — acesso do CI
 - [ ] Criar o IAM OIDC Identity Provider para `token.actions.githubusercontent.com`
 - [ ] Criar a role de deploy com trust policy `sub = repo:<owner>/<repo>:ref:refs/heads/main`
