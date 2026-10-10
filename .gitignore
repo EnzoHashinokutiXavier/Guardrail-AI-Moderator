@@ -1,0 +1,48 @@
+# --- Terraform ---
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfvars
+*.tfvars.json
+crash.log
+crash.*.log
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+*.tfplan
+tfplan
+.terraformrc
+terraform.rc
+# .terraform.lock.hcl é versionado de propósito (fixa versões e hashes dos providers)
+# terraform.tfvars.example é versionado (não casa com *.tfvars)
+
+# --- Pacotes gerados pelo archive_file ---
+*.zip
+
+# --- Python ---
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+.ruff_cache/
+.mypy_cache/
+
+# --- Segredos locais ---
+.env
+.env.*
+!.env.example
+
+# --- Editor / SO ---
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# --- Claude Code (config local) ---
+.claude/settings.local.json
