@@ -102,11 +102,14 @@ Marque `[x]` conforme for concluindo.
 - [x] Incluir na policy o acesso ao bucket do state (`guardrails-tfstate-moderator`), que ainda será criado no 3.2
 
 ### 3.2 AWS — bucket do state
-- [ ] Criar o bucket S3 do state (`guardrails-tfstate-moderator`, em `us-east-1`)
-- [ ] Ativar Block Public Access (4 opções)
-- [ ] Ativar criptografia padrão
-- [ ] Ativar versionamento
-- [ ] Criar a bucket policy restrita à role de deploy e ao usuário admin
+- [x] Criar o bucket S3 do state (`guardrails-tfstate-moderator`, em `us-east-1`)
+- [x] Ativar Block Public Access (4 opções)
+- [x] Desativar ACLs (Object Ownership: *Bucket owner enforced*)
+- [x] Ativar criptografia padrão SSE-S3 (sem KMS, para a role de deploy não precisar de permissões de KMS)
+- [x] Ativar versionamento
+- [x] Criar a bucket policy restrita à role de deploy e ao usuário admin
+- [x] Escrever a bucket policy só com `Deny`: negar quem não for a role de deploy ou o admin (`aws:PrincipalArn` com `StringNotEquals`)
+- [x] Negar na bucket policy o acesso sem HTTPS (`aws:SecureTransport = false`)
 
 ### 3.3 AWS — custos e privacidade
 - [ ] Criar o Budget com alerta por e-mail (ex.: US$ 5)
