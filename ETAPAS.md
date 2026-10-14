@@ -89,7 +89,7 @@ Marque `[x]` conforme for concluindo.
 - [x] Criar o grupo `admins` com a policy `AdministratorAccess`
 - [x] Criar o usuário admin com acesso ao Console, no grupo `admins`, sem o prefixo `guardrails-*` e sem access keys
 - [x] Logar como admin e ativar MFA no usuário
-- [ ] Seguir o resto do bootstrap como admin (root só para tarefas exclusivas de root)
+- [x] Seguir o resto do bootstrap como admin (root só para tarefas exclusivas de root)
 
 ### 3.1 AWS — acesso do CI
 - [x] Criar o IAM OIDC Identity Provider para `token.actions.githubusercontent.com`
@@ -112,12 +112,15 @@ Marque `[x]` conforme for concluindo.
 - [x] Negar na bucket policy o acesso sem HTTPS (`aws:SecureTransport = false`)
 
 ### 3.3 AWS — custos e privacidade
-- [ ] Criar o Budget com alerta por e-mail (ex.: US$ 5)
-- [ ] Ativar o Cost Anomaly Detection
-- [ ] Criar a organização no AWS Organizations (se a conta for avulsa)
-- [ ] Aplicar a AI services opt-out policy
-- [ ] Conferir em Service Quotas o limite de "Concurrent executions" da Lambda
-- [ ] Decidir se a reserved concurrency de 3 será usada ou omitida
+- [x] Criar o Budget com alerta por e-mail (ex.: US$ 5)
+- [x] Usar o template *Monthly cost budget* de US$ 5/mês (alertas em 85% real, 100% real e 100% previsto)
+- [x] Ativar o Cost Anomaly Detection
+- [x] Configurar o Cost Anomaly Detection com resumo diário por e-mail e threshold de US$ 1 (sem SNS fora do Terraform)
+- [x] Criar a organização no AWS Organizations (se a conta for avulsa)
+- [x] Aplicar a AI services opt-out policy
+- [x] Escrever a opt-out policy em `default` (todos os AI services), anexada à Root, com `@@none` para impedir sobrescrita
+- [x] Conferir em Service Quotas o limite de "Concurrent executions" da Lambda — 10 em `us-east-1`
+- [x] Decidir se a reserved concurrency de 3 será usada ou omitida — omitida (limite de 10 abaixo dos 103 necessários, sem pedido de aumento)
 
 ### 3.4 OpenAI
 - [ ] Criar um projeto dedicado
@@ -179,7 +182,7 @@ Marque `[x]` conforme for concluindo.
 - [ ] Criar a role com `comprehend:DetectPiiEntities`, `ssm:GetParameter` no ARN exato e logs no ARN do log group
 - [ ] Empacotar o código com `archive_file`
 - [ ] Configurar Python 3.13, arm64, 256 MB, timeout de 15 s, sem VPC
-- [ ] Configurar a reserved concurrency de 3 (se a quota permitir)
+- [ ] Não definir `reserved_concurrent_executions` (reserved concurrency omitida na 3.3)
 
 ### 5.4 API Gateway
 - [ ] Criar a API REST e o recurso/método `POST`
