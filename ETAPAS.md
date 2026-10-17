@@ -123,11 +123,12 @@ Marque `[x]` conforme for concluindo.
 - [x] Decidir se a reserved concurrency de 3 será usada ou omitida — omitida (limite de 10 abaixo dos 103 necessários, sem pedido de aumento)
 
 ### 3.4 OpenAI
-- [ ] Criar um projeto dedicado
-- [ ] Criar uma key restrita com a menor permissão
-- [ ] Configurar a allowlist de modelos (`omni-moderation-latest`), se disponível
-- [ ] Definir um limite de gasto mensal baixo
-- [ ] Testar a Moderation com o limite ativo
+- [x] Criar projeto guardrails-moderator
+- [x] Criar uma key de service account, Restricted, só com "Model capabilities"
+- [x] Configurar a allowlist de modelos (`omni-moderation-latest`)
+- [x] Definir budget mensal do projeto de US$ 1.00; auto recharge desligado
+- [x] Testar a Moderation; flagged False/True conforme esperado; chat/completions
+    bloqueado pela allowlist
 
 ### 3.5 GitHub Secrets
 - [ ] Criar o secret `OPENAI_API_KEY`
