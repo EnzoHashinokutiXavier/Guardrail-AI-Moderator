@@ -131,8 +131,8 @@ Marque `[x]` conforme for concluindo.
     bloqueado pela allowlist
 
 ### 3.5 GitHub Secrets
-- [ ] Criar o secret `OPENAI_API_KEY`
-- [ ] Criar o secret `ALERT_EMAIL`
+- [x] Criar o secret `OPENAI_API_KEY`
+- [x] Criar o secret `ALERT_EMAIL`
 
 ---
 
