@@ -139,11 +139,18 @@ Marque `[x]` conforme for concluindo.
 ## 4. Workflows do GitHub Actions
 
 ### 4.1 Workflow `test`
-- [ ] Disparar em pull request e em push na `main`
-- [ ] Rodar os testes unitários (pytest)
-- [ ] Rodar `terraform fmt -check`
-- [ ] Rodar `terraform init -backend=false` e `terraform validate`
-- [ ] Garantir que não pede `id-token: write` nem credenciais AWS
+- [x] Disparar em pull request e em push na `main`
+- [x] Push só na `main` (evita execução duplicada em PR de branch própria)
+- [x] Rodar os testes unitários (pytest)
+- [x] Fixar a versão do pytest (`9.1.1`) e o Python em `3.13` (mesma da Lambda)
+- [x] Aceitar o código 5 do pytest (nenhum teste coletado) só até a etapa 8
+- [x] Rodar `terraform fmt -check`
+- [x] Rodar `terraform init -backend=false` e `terraform validate`
+- [x] Fixar o Terraform em `1.11.4` (mesma versão a usar no `apply`/`destroy`)
+- [x] Adiantar o `infra/versions.tf` da 5.1 para o `validate` não falhar com `infra/` vazia
+- [x] Garantir que não pede `id-token: write` nem credenciais AWS
+- [x] Adiantar a 4.4 no `test`: actions por SHA, `permissions: contents: read`, sem `pull_request_target` e sem `environment:`
+- [x] Checkout com `persist-credentials: false` e `timeout-minutes: 10` no job
 
 ### 4.2 Workflow `apply`
 - [ ] Disparar só por `workflow_dispatch`
@@ -168,7 +175,7 @@ Marque `[x]` conforme for concluindo.
 ## 5. Infraestrutura (Terraform)
 
 ### 5.1 Base
-- [ ] Fixar `required_version` (≥ 1.11) e a versão do provider AWS
+- [x] Fixar `required_version` (≥ 1.11) e a versão do provider AWS (`~> 6.69`, adiantado na 4.1)
 - [ ] Configurar o backend S3 com `use_lockfile = true`
 - [ ] Declarar as variáveis `openai_api_key` (`sensitive` e `ephemeral`) e `alert_email`
 - [ ] Usar `aws_caller_identity` no lugar de Account ID hardcoded
@@ -251,6 +258,10 @@ Marque `[x]` conforme for concluindo.
 ---
 
 ## 8. Testes unitários
+
+### 8.0 Configuração
+- [ ] Criar o `pytest.ini` (`testpaths = tests`, `pythonpath = src`)
+- [ ] Remover do workflow `test` a aceitação do código 5 (`|| [ "$?" -eq 5 ]`)
 
 ### 8.1 Substituição
 - [ ] Substituição simples de uma entidade
