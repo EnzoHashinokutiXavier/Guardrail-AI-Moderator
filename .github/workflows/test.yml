@@ -1,0 +1,47 @@
+name: test
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.13"
+
+      - name: Instalar pytest
+        run: python -m pip install pytest==9.1.1
+
+      - name: Testes unitários
+        run: |
+          # Código 5 = nenhum teste coletado. Aceito só até a
+          # etapa 8; remover o "|| ..." quando houver testes.
+          python -m pytest || [ "$?" -eq 5 ]
+
+      - uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4.0.1
+        with:
+          terraform_version: "1.11.4"
+
+      - name: terraform fmt
+        working-directory: infra
+        run: terraform fmt -check -recursive -diff
+
+      - name: terraform init
+        working-directory: infra
+        run: terraform init -backend=false -input=false
+
+      - name: terraform validate
+        working-directory: infra
+        run: terraform validate
