@@ -93,9 +93,10 @@ Marque `[x]` conforme for concluindo.
 
 ### 3.1 AWS — acesso do CI
 - [x] Criar o IAM OIDC Identity Provider para `token.actions.githubusercontent.com`
-- [x] Criar a role de deploy com trust policy `sub = repo:<owner>/<repo>:ref:refs/heads/main`
+- [x] Criar a role de deploy com trust policy `sub = repo:<owner>@<owner_id>/<repo>@<repo_id>:ref:refs/heads/main`
 - [x] Nomear a role de deploy fora do prefixo `guardrails-*` (para ela não poder alterar as próprias permissões)
 - [x] Ajustar a trust policy gerada pelo Console para `StringEquals` com um único `sub` exato (o assistente gerou `StringLike` com valor duplicado)
+- [x] Corrigir o `sub` para o formato com IDs imutáveis (`<owner>@<owner_id>/<repo>@<repo_id>`), que é o que o GitHub envia; o formato só com nomes dava `Not authorized to perform sts:AssumeRoleWithWebIdentity` (valor exato conferido no CloudTrail)
 - [x] Anexar as permissões da role de deploy, escopadas ao prefixo `guardrails-*`
 - [x] Restringir `iam:PassRole` ao prefixo `guardrails-*` com `iam:PassedToService = lambda.amazonaws.com`
 - [x] Usar policy inline (`deploy-permissions`) em vez de managed policy, para a role não poder editar as próprias permissões
@@ -167,7 +168,7 @@ Marque `[x]` conforme for concluindo.
 - [x] `concurrency` group `terraform` compartilhado com o destroy, sem cancelar execução em andamento
 - [x] `timeout-minutes: 30` no job e checkout com `persist-credentials: false`
 - [x] Adiantar a 4.4: actions por SHA, `contents: read` + `id-token: write`, sem `environment:`
-- [ ] Smoke test do OIDC com `infra/` vazia (0 recursos)
+- [x] Smoke test do OIDC com `infra/` vazia (0 recursos)
 
 ### 4.3 Workflow `destroy`
 - [ ] Disparar só por `workflow_dispatch`
