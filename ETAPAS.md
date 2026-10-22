@@ -133,6 +133,7 @@ Marque `[x]` conforme for concluindo.
 ### 3.5 GitHub Secrets
 - [x] Criar o secret `OPENAI_API_KEY`
 - [x] Criar o secret `ALERT_EMAIL`
+- [x] Criar o secret `AWS_ROLE_ARN` (ARN da role de deploy, fora do repositório por conter o Account ID)
 
 ---
 
@@ -153,10 +154,20 @@ Marque `[x]` conforme for concluindo.
 - [x] Checkout com `persist-credentials: false` e `timeout-minutes: 10` no job
 
 ### 4.2 Workflow `apply`
-- [ ] Disparar só por `workflow_dispatch`
-- [ ] Autenticar via OIDC com `aws-actions/configure-aws-credentials`
-- [ ] Passar `OPENAI_API_KEY` e `ALERT_EMAIL` como variáveis do Terraform
-- [ ] Rodar `terraform init` e `terraform apply`
+- [x] Disparar só por `workflow_dispatch`
+- [x] Autenticar via OIDC com `aws-actions/configure-aws-credentials`
+- [x] Passar `OPENAI_API_KEY` e `ALERT_EMAIL` como variáveis do Terraform
+- [x] Rodar `terraform init` e `terraform apply`
+- [x] Fixar o `configure-aws-credentials` por SHA (`v6.3.0`) e reusar os SHAs de `checkout` e `setup-terraform` do `test`
+- [x] ARN da role no secret `AWS_ROLE_ARN` (Account ID fora do repo) e `mask-aws-account-id: true` (log público)
+- [x] `role-session-name: guardrails-apply` para identificar o apply no CloudTrail
+- [x] Job só roda na `main` (`if: github.ref == 'refs/heads/main'`)
+- [x] Secrets via `TF_VAR_*` só no passo do apply (nada de `-var=` na linha de comando)
+- [x] `terraform apply -auto-approve -input=false` (o clique em "Run workflow" é a aprovação)
+- [x] `concurrency` group `terraform` compartilhado com o destroy, sem cancelar execução em andamento
+- [x] `timeout-minutes: 30` no job e checkout com `persist-credentials: false`
+- [x] Adiantar a 4.4: actions por SHA, `contents: read` + `id-token: write`, sem `environment:`
+- [ ] Smoke test do OIDC com `infra/` vazia (0 recursos)
 
 ### 4.3 Workflow `destroy`
 - [ ] Disparar só por `workflow_dispatch`
