@@ -171,10 +171,18 @@ Marque `[x]` conforme for concluindo.
 - [x] Smoke test do OIDC com `infra/` vazia (0 recursos)
 
 ### 4.3 Workflow `destroy`
-- [ ] Disparar só por `workflow_dispatch`
-- [ ] Autenticar via OIDC
-- [ ] Passar `OPENAI_API_KEY` e `ALERT_EMAIL` (exigidos pelo `destroy`)
-- [ ] Rodar `terraform init` e `terraform destroy`
+- [x] Disparar só por `workflow_dispatch`
+- [x] Autenticar via OIDC
+- [x] Passar `OPENAI_API_KEY` e `ALERT_EMAIL` (exigidos pelo `destroy`)
+- [x] Rodar `terraform init` e `terraform destroy`
+- [x] Cópia do `apply.yml` com os mesmos SHAs; só mudam `name`, job, `role-session-name` e o comando final
+- [x] `role-session-name: guardrails-destroy` para separar apply e destroy no CloudTrail
+- [x] `concurrency` group `terraform` compartilhado com o apply, sem cancelar execução em andamento (destroy pela metade deixaria recursos e lock presos)
+- [x] Job só roda na `main` e secrets via `TF_VAR_*` só no passo do destroy
+- [x] `terraform destroy -auto-approve -input=false` (o clique em "Run workflow" é a aprovação)
+- [x] Recursos do bootstrap (state, OIDC, role, Budget) ficam fora do Terraform e não são apagados
+- [x] Adiantar a 4.4: actions por SHA, `contents: read` + `id-token: write`, sem `environment:`
+- [x] Smoke test do OIDC com `infra/` vazia (0 recursos destruídos)
 
 ### 4.4 Hardening
 - [ ] Fixar todas as actions de terceiros por SHA de commit
