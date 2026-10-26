@@ -185,10 +185,15 @@ Marque `[x]` conforme for concluindo.
 - [x] Smoke test do OIDC com `infra/` vazia (0 recursos destruídos)
 
 ### 4.4 Hardening
-- [ ] Fixar todas as actions de terceiros por SHA de commit
-- [ ] Declarar `permissions:` mínimas (`contents: read` em todos, `id-token: write` só no `apply` e `destroy`)
-- [ ] Confirmar que nenhum workflow usa `pull_request_target`
-- [ ] Confirmar que nenhum job usa `environment:`
+- [x] Fixar todas as actions de terceiros por SHA de commit
+- [x] Declarar `permissions:` mínimas (`contents: read` em todos, `id-token: write` só no `apply` e `destroy`)
+- [x] Confirmar que nenhum workflow usa `pull_request_target`
+- [x] Confirmar que nenhum job usa `environment:`
+- [x] Etapa só de conferência: os três workflows já nasceram conformes (4.1 a 4.3), sem mudança de arquivo
+- [x] SHAs conferidos contra as tags com `git ls-remote` e no log ("Download action repository" com SHA completo)
+- [x] Buscas extras sem ocorrência: access keys AWS, `arn:aws:`, Account ID, `upload-artifact`, `-var=`, gatilhos `workflow_run`/`issue_comment`/`schedule`
+- [x] OIDC comprovado pelo log do `configure-aws-credentials` ("Authenticated as ...:guardrails-apply"); a lista "GITHUB_TOKEN Permissions" pode omitir o IdToken
+- [x] Repo (Settings → Actions → General): token padrão só leitura, Actions sem permissão de criar/aprovar PR, actions exigidas por SHA completo e aprovação obrigatória para workflows de PR de fork
 
 ---
 
