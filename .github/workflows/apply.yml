@@ -34,7 +34,7 @@ jobs:
 
       - name: terraform init
         working-directory: infra
-        run: terraform init -input=false
+        run: terraform init -input=false -lockfile=readonly
 
       - name: terraform apply
         working-directory: infra

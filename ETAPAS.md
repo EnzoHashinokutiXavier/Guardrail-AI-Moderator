@@ -201,10 +201,16 @@ Marque `[x]` conforme for concluindo.
 
 ### 5.1 Base
 - [x] Fixar `required_version` (≥ 1.11) e a versão do provider AWS (`~> 6.69`, adiantado na 4.1)
-- [ ] Configurar o backend S3 com `use_lockfile = true`
-- [ ] Declarar as variáveis `openai_api_key` (`sensitive` e `ephemeral`) e `alert_email`
-- [ ] Usar `aws_caller_identity` no lugar de Account ID hardcoded
-- [ ] Versionar o `.terraform.lock.hcl`
+- [x] Configurar o backend S3 com `use_lockfile = true`
+- [x] Declarar as variáveis `openai_api_key` (`sensitive` e `ephemeral`) e `alert_email`
+- [x] Usar `aws_caller_identity` no lugar de Account ID hardcoded
+- [x] Versionar o `.terraform.lock.hcl`
+- [x] Bloco `provider "aws"` com `region = "us-east-1"` e `default_tags` (`Projeto`, `Gerenciado`; a role de deploy já tem `iam:TagRole`/`iam:TagPolicy`)
+- [x] Backend sem `dynamodb_table` e sem KMS (`encrypt = true` com SSE-S3)
+- [x] Key do state: `guardrails-moderator/terraform.tfstate`
+- [x] `alert_email` `sensitive` (dado pessoal) e não `ephemeral` (fica no state pela assinatura SNS)
+- [x] Lock com hashes de `linux_amd64` e `windows_amd64` (`terraform providers lock`)
+- [x] CI com `-lockfile=readonly` no `terraform init` dos três workflows
 
 ### 5.2 Parameter Store
 - [ ] Criar o parâmetro `SecureString` `guardrails-*` com `value_wo` e `value_wo_version`
