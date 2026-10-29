@@ -211,12 +211,20 @@ Marque `[x]` conforme for concluindo.
 - [x] `alert_email` `sensitive` (dado pessoal) e não `ephemeral` (fica no state pela assinatura SNS)
 - [x] Lock com hashes de `linux_amd64` e `windows_amd64` (`terraform providers lock`)
 - [x] CI com `-lockfile=readonly` no `terraform init` dos três workflows
+- [x] Smoke test do backend com 0 recursos (apply e destroy; state no S3, sem `.tflock` sobrando)
 
 ### 5.2 Parameter Store
-- [ ] Criar o parâmetro `SecureString` `guardrails-*` com `value_wo` e `value_wo_version`
-- [ ] Usar a chave gerenciada `alias/aws/ssm`
+- [x] Criar o parâmetro `SecureString` `guardrails-*` com `value_wo` e `value_wo_version`
+- [x] Usar a chave gerenciada `alias/aws/ssm`
+- [x] Nome `guardrails-openai-api-key`, sem barra (casa com `parameter/guardrails-*` da `deploy-permissions`)
+- [x] `tier = "Standard"` e `key_id` explícito (padrão documentado)
+- [x] Rotação: trocar o secret `OPENAI_API_KEY` e incrementar `value_wo_version`
+- [x] Conferido no Console (tipo, tier, KMS, tags, criado pela sessão `guardrails-apply`)
+- [x] Conferido que o state não contém a chave (busca por `sk-` na versão do state com o parâmetro)
+- [x] Smoke test com 1 recurso (apply, apply sem mudança, destroy; sem `.tflock` sobrando)
 
 ### 5.3 Lambda principal
+- [ ] Acrescentar `iam:ListRoleTags` e `iam:ListPolicyTags` ao bloco `IamRolesAndPolicies` da `deploy-permissions` (exigidas pelo `default_tags`)
 - [ ] Criar o log group com retenção (ex.: 14 dias) antes da função
 - [ ] Criar a role com `comprehend:DetectPiiEntities`, `ssm:GetParameter` no ARN exato e logs no ARN do log group
 - [ ] Empacotar o código com `archive_file`
