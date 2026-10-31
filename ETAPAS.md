@@ -224,12 +224,20 @@ Marque `[x]` conforme for concluindo.
 - [x] Smoke test com 1 recurso (apply, apply sem mudança, destroy; sem `.tflock` sobrando)
 
 ### 5.3 Lambda principal
-- [ ] Acrescentar `iam:ListRoleTags` e `iam:ListPolicyTags` ao bloco `IamRolesAndPolicies` da `deploy-permissions` (exigidas pelo `default_tags`)
-- [ ] Criar o log group com retenção (ex.: 14 dias) antes da função
-- [ ] Criar a role com `comprehend:DetectPiiEntities`, `ssm:GetParameter` no ARN exato e logs no ARN do log group
-- [ ] Empacotar o código com `archive_file`
-- [ ] Configurar Python 3.13, arm64, 256 MB, timeout de 15 s, sem VPC
-- [ ] Não definir `reserved_concurrent_executions` (reserved concurrency omitida na 3.3)
+- [x] Acrescentar `iam:ListRoleTags` e `iam:ListPolicyTags` ao bloco `IamRolesAndPolicies` da `deploy-permissions` (exigidas pelo `default_tags`)
+- [x] Criar o log group com retenção (ex.: 14 dias) antes da função
+- [x] Criar a role com `comprehend:DetectPiiEntities`, `ssm:GetParameter` no ARN exato e logs no ARN do log group
+- [x] Empacotar o código com `archive_file`
+- [x] Configurar Python 3.13, arm64, 256 MB, timeout de 15 s, sem VPC
+- [x] Não definir `reserved_concurrent_executions` (reserved concurrency omitida na 3.3)
+- [x] Provider `hashicorp/archive` (`~> 2.8`) no lock, com hashes de `linux_amd64` e `windows_amd64`
+- [x] Código provisório `src/moderador/app.py` (502 fail closed) até a etapa 7; handler `app.handler`
+- [x] Nomes `guardrails-moderador` e `guardrails-moderador-role`; policy inline, sem managed policy da AWS
+- [x] `resources = ["*"]` só em `DetectPiiEntities` (ação sem resource type)
+- [x] Logs no ARN do log group com sufixo `:*`
+- [x] Dependência do log group via `logging_config`, sem `depends_on`
+- [x] Omitido, `reserved_concurrent_executions` vale -1, o que permite ao `apply` religar a função depois do kill switch (prova real na 9.3)
+- [x] Conferências finais no Console e smoke test concluídos
 
 ### 5.4 API Gateway
 - [ ] Criar a API REST e o recurso/método `POST`
