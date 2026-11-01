@@ -61,6 +61,8 @@ Em vez de manter uma lista própria de chaves de acesso, usar **API Gateway API 
 
 ## Contrato da API
 
+Rota: `POST /v1/moderar` (`https://<id>.execute-api.us-east-1.amazonaws.com/v1/moderar`).
+
 ### Request
 
 ```json
@@ -183,7 +185,7 @@ Em nenhum caso de erro o texto é devolvido.
   - Fazer essa validação também via **Request Validator do API Gateway** (schema JSON), sem custo adicional — rejeita requisição malformada antes de invocar a Lambda, reduzindo custo e superfície de ataque. A Lambda repete a validação como defesa em profundidade.
   - Schema: `texto` com `"type": "string"`, `minLength: 1` e `maxLength: 1000`; `modo` com `"type": "integer"` e `"enum": [1, 2, 3]`; os dois em `required`.
   - Na Lambda, conferir o tipo com `type(modo) is int`, e não só `modo in (1, 2, 3)`: em Python, `True in (1, 2, 3)` é verdadeiro.
-  - **`Content-Type`:** o Request Validator escolhe o modelo pelo `Content-Type` da requisição. Confirmar na implementação se um `Content-Type` diferente de `application/json` passa pelo validator sem validar o body. Se passar, a Lambda rejeita com 400 (ela confere o header), mas essa requisição já foi uma invocação e conta para o kill switch. Esse desvio é aceito, desde que fique documentado.
+  - **`Content-Type`:** o Request Validator escolhe o modelo pelo `Content-Type` da requisição. **Confirmado no teste real:** `text/plain` passa pelo validator sem validar o body e invoca a Lambda, enquanto `application/json; charset=utf-8` é validado normalmente. A Lambda rejeita o `Content-Type` errado com 400 (ela confere o header), mas essa requisição já foi uma invocação e conta para o kill switch. Esse desvio é aceito e deve constar do README.
   - **Limite de tamanho: `maxLength` de 1.000 caracteres**, no Request Validator e na Lambda. O `DetectPiiEntities` aceita até 100 KB de UTF-8 por chamada síncrona e a OpenAI Moderation tem limite próprio — ambos muito acima disso, então a Lambda nunca paga uma chamada externa só para receber erro de tamanho. O valor é definido pelo custo: 1.000 caracteres = no máximo 10 unidades do Comprehend por chamada (ver "Custos").
 - O Comprehend pode errar (falso negativo/positivo); o README não deve apresentar o serviço como garantia de anonimização.
 - **Logs:** nunca logar `texto` ou `texto_censurado` em texto puro no CloudWatch (podem conter PII). Logar apenas metadados: modo, tamanho do texto, latência, status da resposta.
@@ -205,7 +207,7 @@ Como este é um projeto de portfólio (sem tráfego real esperado), o foco é ev
   - throttle **rate 5 req/s, burst 10** — propositalmente **acima** do limite do kill switch. Se o throttle ficasse abaixo de 10 req/min, as requisições seriam barradas antes de chegar à Lambda e o kill switch nunca dispararia;
   - **quota de 1.000 requisições/dia**, para cobrir abuso lento abaixo de 10/min.
 
-  **A documentação da AWS é explícita: throttle e quota do Usage Plan são *best-effort*, não limites rígidos, e não devem ser usados como controle de custo.** Tratar como camada de redução de abuso, não como garantia.
+  **A documentação da AWS é explícita: throttle e quota do Usage Plan são *best-effort*, não limites rígidos, e não devem ser usados como controle de custo.** Tratar como camada de redução de abuso, não como garantia. No teste real, em três rajadas de 40 requisições paralelas (~0,6 s cada), só 1 das 120 recebeu 429: o throttle não segura rajada curta. O restante voltou como 502 da Lambda ou 500 do API Gateway, provavelmente pelo limite de concorrência da conta (causa não confirmada pela métrica `Throttles`).
 - **Kill switch automático (obrigatório), calibrado para mais de 10 invocações/min:**
   - Alarme do CloudWatch em `Invocations` da Lambda principal: `Sum > 10` (`GreaterThanThreshold`, threshold 10), período de 60 s, 1 de 1 datapoint.
   - **O período segue o minuto do relógio, não uma janela móvel.** "Mais de 10 em 1 minuto" significa mais de 10 entre `hh:mm:00` e `hh:mm:59`. Um uso que se divide entre dois minutos (por exemplo, 10 + 10 em 40 s) não dispara. No pior caso, cerca de 20 invocações em 60 s passam sem disparar o alarme. É aceito: o custo disso é desprezível, e a quota diária cobre o abuso que fica abaixo do gatilho.
@@ -218,7 +220,7 @@ Como este é um projeto de portfólio (sem tráfego real esperado), o foco é ev
   - O `apply` sozinho mantém a mesma API key. Se o kill veio de uso da key por terceiros, religar com `destroy` + `apply`, que gera uma key nova.
   - Se o abuso persistir mesmo com a Lambda zerada (as requisições ainda custam API Gateway), rodar o `destroy`.
 - **Pior caso de custo (documentar no README):**
-  - **Flood:** até o kill switch disparar (cerca de 3 min no throttle de 5 req/s ≈ 900 requisições × no máximo 10 unidades do Comprehend), menos de **US$ 1**.
+  - **Flood:** até o kill switch disparar (cerca de 3 min), o teto real é a concorrência da conta, não o throttle (ver "Usage Plan"). Com concorrência 10 e ~300 ms por chamada, são até ~33 req/s ≈ 6.000 requisições × no máximo 10 unidades do Comprehend, cerca de **US$ 6** no pior caso. Se o throttle de 5 req/s segurasse, seriam ≈ 900 requisições e menos de US$ 1. É uma estimativa, não uma medição: o flood sustentado não foi testado.
   - **Abuso lento abaixo do gatilho:** limitado pela quota diária (1.000 requisições × até 10 unidades do Comprehend) a cerca de **US$ 1/dia**, com o Budget e o Cost Anomaly Detection avisando. Como a quota é best-effort, esse limite também é.
 - **AWS WAF foi avaliado e descartado por enquanto:** tem custo fixo mensal (~$5-6 de Web ACL + $1/regra + $0,60 por milhão de requisições) mesmo sem tráfego, o que não se justifica neste estágio. **Essa decisão só se sustenta com o kill switch acima** — Usage Plan + Budget sozinhos não bastam, já que a AWS não os considera limites rígidos. Reavaliar (WAF com rate-based rule) se o projeto sair do portfólio e for para produção com tráfego real.
 - **Infraestrutura como código com `destroy` fácil:** como o objetivo é demonstração (não uso contínuo), definir a stack via Terraform permite rodar `terraform destroy` quando o projeto não estiver sendo mostrado a ninguém, garantindo custo zero absoluto fora dos períodos de demonstração, e `terraform apply` para recriar tudo em minutos. Como nada roda localmente (ver "Execução via CI/CD"), tanto `apply` quanto `destroy` são disparados manualmente como workflows do GitHub Actions.
@@ -254,7 +256,7 @@ Estimativa **conservadora** para a stack no ar (região `us-east-1`, valores em 
 | 1.000 (quota diária) | US$ 0,16 | US$ 9,16 | US$ 30,16 |
 
 **Como usar esta tabela:**
-- Uso legítimo de demonstração (dezenas de chamadas por dia) custa **centavos por mês**. O risco financeiro do projeto não está no uso normal, e sim no abuso — coberto em "Pior caso de custo": o kill switch limita um flood a menos de US$ 1, e a quota limita o abuso lento a cerca de US$ 1/dia (a última linha da tabela).
+- Uso legítimo de demonstração (dezenas de chamadas por dia) custa **centavos por mês**. O risco financeiro do projeto não está no uso normal, e sim no abuso — coberto em "Pior caso de custo": o kill switch limita um flood a cerca de US$ 6 no pior caso, e a quota limita o abuso lento a cerca de US$ 1/dia (a última linha da tabela).
 - **Calibrar o Budget:** um Budget de US$ 5/mês dispara por volta de 550 requisições/dia sustentadas com texto curto, ou de 170/dia com texto de 1.000 caracteres. Como esses volumes já seriam muito acima do esperado para uma demo, qualquer alerta neles indica uso anormal.
 - **Kill switch:** o limite é fixo em **mais de 10 invocações por minuto**. Uma demo feita à mão não chega perto disso; qualquer coisa acima é tratada como abuso.
 - Se o projeto sair do portfólio com tráfego real, refazer a conta: acima de ~milhares de requisições/dia o Comprehend continua dominando.
@@ -267,7 +269,7 @@ O objetivo é que nada do sistema — aplicação ou infraestrutura — dependa 
 
 - **Workflows:**
   - `apply`: **só manual** (`workflow_dispatch`). Nunca dispara em merge na `main`, para que nenhum deploy religue a stack depois de um kill. Disparar o `apply` manualmente já é a aprovação, por isso ele roda `terraform apply -auto-approve -input=false`.
-  - `destroy`: manual (`workflow_dispatch`), usado para zerar custo entre demonstrações. Ele também recebe os secrets `OPENAI_API_KEY` e `ALERT_EMAIL`, porque o `terraform destroy` exige valor para toda variável obrigatória. É uma cópia do `apply`, mudando só o nome, o `role-session-name` e o comando final.
+  - `destroy`: manual (`workflow_dispatch`), usado para zerar custo entre demonstrações. Ele também recebe os secrets `OPENAI_API_KEY` e `ALERT_EMAIL`, porque o Terraform exige valor para toda variável obrigatória. É uma cópia do `apply`, mudando só o nome, o `role-session-name` e o comando final, que são dois: `terraform plan -destroy -out=tfplan > /dev/null` e `terraform apply tfplan`. O log não imprime o plano porque, no provider 6.70.0, o `value` de `aws_api_gateway_usage_plan_key` não é `sensitive`, e o plano de destroy mostraria a API key em texto puro num log público.
   - `apply` e `destroy`: o job só roda na `main` (`if: github.ref == 'refs/heads/main'`); os secrets entram como `TF_VAR_*` só no passo do Terraform (nunca `-var=` na linha de comando); os dois compartilham o `concurrency` group `terraform`, sem cancelar execução em andamento (um `destroy` pela metade deixaria recursos e lock presos); `role-session-name` `guardrails-apply` / `guardrails-destroy` separa os dois no CloudTrail.
   - `test`: em pull request e em push na `main` (para cobrir commits feitos direto na `main`). Roda os testes unitários (pytest `9.1.1`, Python `3.13`, a mesma da Lambda), `terraform fmt -check` e `terraform validate` (com `terraform init -backend=false`). Sem credenciais AWS (não pede `id-token: write` nem assume a role).
   - Terraform fixado em `1.11.4` nos três workflows.
@@ -346,7 +348,7 @@ Resumo das principais ameaças consideradas e como o design responde a cada uma 
 | Action de terceiro comprometida no CI (com acesso à role de deploy) | Actions fixadas por SHA de commit (exigido também nas configurações do repositório), `permissions:` mínimas, sem `pull_request_target`, aprovação obrigatória para workflows de PR de fork |
 | Prompt injection via texto do usuário | Nenhum modelo generativo decide o que censurar |
 | Falha de um serviço de moderação liberando conteúdo não censurado | Fail-closed: erro/timeout retorna 5xx |
-| Requisição malformada consumindo invocação da Lambda | Request Validator do API Gateway (tipo e valor de `modo`, tamanho mínimo e máximo de `texto`). Desvio possível por `Content-Type` diferente, rejeitado pela Lambda (ver "Segurança") |
+| Requisição malformada consumindo invocação da Lambda | Request Validator do API Gateway (tipo e valor de `modo`, tamanho mínimo e máximo de `texto`). Desvio confirmado por `Content-Type` diferente, rejeitado pela Lambda (ver "Segurança") |
 | Custo fixo por hora sem tráfego (ex.: NAT Gateway) | Lambda sem VPC |
 | Credenciais AWS de longa duração vazadas | Deploy via GitHub Actions com **OIDC** (sem access keys estáticas); bootstrap único via Console AWS |
 | Segredo vazado via `.tfstate` ou `.tfvars` commitado no repositório público | `.gitignore` cobrindo state e `.tfvars`; state remoto em S3 privado; secret scanning com push protection |
@@ -366,6 +368,6 @@ Resumo das principais ameaças consideradas e como o design responde a cada uma 
 8. Confirmar a assinatura de e-mail do SNS. Depois, teste real:
    - os três modos;
    - offsets com acento e emoji antes da PII;
-   - `Content-Type` diferente de `application/json`, para saber se o Request Validator barra ou se a requisição chega à Lambda;
+   - `Content-Type` diferente de `application/json`: o Request Validator não barra (medido com a Lambda provisória), então confirmar o 400 da Lambda final;
    - **kill switch**: logo depois da virada de um minuto, mandar cerca de 25 requisições **em sequência** (uma depois da outra, não em paralelo), para que mais de 10 caiam no mesmo minuto de relógio. Em paralelo, o burst de 10 e o limite de concorrência da conta barram parte delas antes da invocação, e o `Sum` pode não passar de 10. Depois, confirmar a concorrência em 0 e o e-mail recebido, rodar o `apply` e confirmar que a stack voltou.
 9. README: arquitetura, limitação de região/LGPD, retenção de dados pela AWS e pela OpenAI, só inglês, exceção do modo 2, pior caso de custo, risco residual da role de deploy, ameaças e mitigações, licença não comercial, `curl` com placeholders e aviso de que a API só fica no ar durante demos.

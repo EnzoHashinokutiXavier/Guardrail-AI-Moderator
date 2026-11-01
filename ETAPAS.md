@@ -179,7 +179,7 @@ Marque `[x]` conforme for concluindo.
 - [x] `role-session-name: guardrails-destroy` para separar apply e destroy no CloudTrail
 - [x] `concurrency` group `terraform` compartilhado com o apply, sem cancelar execução em andamento (destroy pela metade deixaria recursos e lock presos)
 - [x] Job só roda na `main` e secrets via `TF_VAR_*` só no passo do destroy
-- [x] `terraform destroy -auto-approve -input=false` (o clique em "Run workflow" é a aprovação)
+- [x] `terraform plan -destroy -out=tfplan > /dev/null` + `terraform apply tfplan` (o clique em "Run workflow" é a aprovação; o log não imprime o plano, que mostraria a API key — ver 5.4)
 - [x] Recursos do bootstrap (state, OIDC, role, Budget) ficam fora do Terraform e não são apagados
 - [x] Adiantar a 4.4: actions por SHA, `contents: read` + `id-token: write`, sem `environment:`
 - [x] Smoke test do OIDC com `infra/` vazia (0 recursos destruídos)
@@ -240,14 +240,23 @@ Marque `[x]` conforme for concluindo.
 - [x] Conferências finais no Console e smoke test concluídos
 
 ### 5.4 API Gateway
-- [ ] Criar a API REST e o recurso/método `POST`
-- [ ] Criar o modelo JSON (`texto` 1–1.000, `modo` inteiro em `[1, 2, 3]`, ambos obrigatórios)
-- [ ] Criar o Request Validator
-- [ ] Configurar as Gateway Responses no formato `{"erro": ...}` (400, 403, 429, 5xx)
-- [ ] Exigir API key no método
-- [ ] Criar a API key gerada pelo API Gateway
-- [ ] Criar o Usage Plan (rate 5, burst 10, quota 1.000/dia) e associar a key
-- [ ] Criar o deployment e o stage
+- [x] Criar a API REST e o recurso/método `POST`
+- [x] Criar o modelo JSON (`texto` 1–1.000, `modo` inteiro em `[1, 2, 3]`, ambos obrigatórios)
+- [x] Criar o Request Validator
+- [x] Configurar as Gateway Responses no formato `{"erro": ...}` (400, 403, 429, 5xx)
+- [x] Exigir API key no método
+- [x] Criar a API key gerada pelo API Gateway
+- [x] Criar o Usage Plan (rate 5, burst 10, quota 1.000/dia) e associar a key
+- [x] Criar o deployment e o stage
+- [x] Rota `POST /v1/moderar`, endpoint `REGIONAL`
+- [x] `aws_lambda_permission` com `source_arn` exato (stage, método e caminho); o botão Test do Console do API Gateway fica de fora
+- [x] Deployment com `triggers` no hash do `api_gateway.tf` e `create_before_destroy`
+- [x] Gateway Responses sem `status_code`, com `DEFAULT_4XX` e `DEFAULT_5XX` como rede de segurança
+- [x] `value` da `usage_plan_key` não é `sensitive` no provider 6.70.0: workflow `destroy` sem imprimir o plano
+- [x] Medido: `modo` `1.0` e `application/json; charset=utf-8` com corpo inválido voltam 400 no validator
+- [x] Medido: `text/plain` com corpo inválido passa sem validar e invoca a Lambda (desvio aceito no PROJETO.md)
+- [x] Medido: em rajadas de 40 em ~0,6 s, só 1 de 120 requisições recebeu 429; o throttle não segura rajada curta, e o excesso apareceu como 500 no formato `{"erro": ...}`
+- [x] Smoke test concluído (apply, apply sem mudança, testes de 400/403/429, logs, destroy)
 
 ---
 
@@ -272,7 +281,7 @@ Marque `[x]` conforme for concluindo.
 ## 7. Aplicação (Lambda principal)
 
 ### 7.1 Validação
-- [ ] Conferir o `Content-Type` = `application/json`
+- [ ] Conferir o `Content-Type` = `application/json`, sem diferenciar maiúsculas e aceitando parâmetros como `; charset=utf-8` (o validator aceita, ver 5.4)
 - [ ] Validar o JSON e a presença de `texto` e `modo`
 - [ ] Validar `texto` como string de 1 a 1.000 caracteres
 - [ ] Validar `modo` com `type(modo) is int` e valor em 1, 2 ou 3
