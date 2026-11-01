@@ -41,4 +41,6 @@ jobs:
         env:
           TF_VAR_openai_api_key: ${{ secrets.OPENAI_API_KEY }}
           TF_VAR_alert_email: ${{ secrets.ALERT_EMAIL }}
-        run: terraform destroy -auto-approve -input=false
+        run: |
+          terraform plan -destroy -input=false -out=tfplan > /dev/null
+          terraform apply -input=false tfplan
