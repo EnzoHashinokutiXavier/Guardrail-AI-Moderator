@@ -251,7 +251,7 @@ Marque `[x]` conforme for concluindo.
 - [x] Rota `POST /v1/moderar`, endpoint `REGIONAL`
 - [x] `aws_lambda_permission` com `source_arn` exato (stage, método e caminho); o botão Test do Console do API Gateway fica de fora
 - [x] Deployment com `triggers` no hash do `api_gateway.tf` e `create_before_destroy`
-- [x] Gateway Responses sem `status_code`, com `DEFAULT_4XX` e `DEFAULT_5XX` como rede de segurança
+- [x] Gateway Responses com `status_code` igual ao padrão da AWS nos 5 tipos (sem isso, todo `apply` mostra 5 changes) e nulo em `DEFAULT_4XX` e `DEFAULT_5XX`, a rede de segurança
 - [x] `value` da `usage_plan_key` não é `sensitive` no provider 6.70.0: workflow `destroy` sem imprimir o plano
 - [x] Medido: `modo` `1.0` e `application/json; charset=utf-8` com corpo inválido voltam 400 no validator
 - [x] Medido: `text/plain` com corpo inválido passa sem validar e invoca a Lambda (desvio aceito no PROJETO.md)

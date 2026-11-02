@@ -4,13 +4,13 @@ locals {
   api_stage   = "v1"
 
   api_erros = {
-    BAD_REQUEST_BODY             = "requisição inválida"
-    INVALID_API_KEY              = "acesso negado"
-    MISSING_AUTHENTICATION_TOKEN = "acesso negado"
-    THROTTLED                    = "limite de requisições excedido"
-    QUOTA_EXCEEDED               = "limite de requisições excedido"
-    DEFAULT_4XX                  = "requisição recusada"
-    DEFAULT_5XX                  = "serviço de moderação indisponível"
+    BAD_REQUEST_BODY             = { status = "400", mensagem = "requisição inválida" }
+    INVALID_API_KEY              = { status = "403", mensagem = "acesso negado" }
+    MISSING_AUTHENTICATION_TOKEN = { status = "403", mensagem = "acesso negado" }
+    THROTTLED                    = { status = "429", mensagem = "limite de requisições excedido" }
+    QUOTA_EXCEEDED               = { status = "429", mensagem = "limite de requisições excedido" }
+    DEFAULT_4XX                  = { status = null, mensagem = "requisição recusada" }
+    DEFAULT_5XX                  = { status = null, mensagem = "serviço de moderação indisponível" }
   }
 }
 
@@ -94,9 +94,10 @@ resource "aws_api_gateway_gateway_response" "erros" {
 
   rest_api_id   = aws_api_gateway_rest_api.moderador.id
   response_type = each.key
+  status_code   = each.value.status
 
   response_templates = {
-    "application/json" = jsonencode({ erro = each.value })
+    "application/json" = jsonencode({ erro = each.value.mensagem })
   }
 }
 
