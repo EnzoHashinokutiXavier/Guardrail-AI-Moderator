@@ -272,10 +272,15 @@ Marque `[x]` conforme for concluindo.
 - [x] Smoke test concluído (apply, confirmação, publicação manual, apply sem mudança, destroy)
 
 ### 6.2 Lambda kill switch
-- [ ] Criar o log group com retenção antes da função
-- [ ] Criar a role com `lambda:PutFunctionConcurrency` no ARN da principal e logs no ARN do log group
-- [ ] Implementar o código que zera a concorrência da Lambda principal
-- [ ] Inscrever a Lambda no tópico SNS e dar permissão de invocação ao SNS
+- [x] Criar o log group com retenção antes da função
+- [x] Criar a role com `lambda:PutFunctionConcurrency` no ARN da principal e logs no ARN do log group
+- [x] Implementar o código que zera a concorrência da Lambda principal
+- [x] Inscrever a Lambda no tópico SNS e dar permissão de invocação ao SNS
+- [x] Nomes `guardrails-kill-switch` e `guardrails-kill-switch-role`, em `infra/kill_switch.tf`, reaproveitando a trust policy da principal
+- [x] Python 3.13, arm64, 128 MB, timeout de 10 s, sem VPC e sem reserva
+- [x] Nome da principal em `FUNCAO_ALVO`; o código não lê o evento e não captura exceção (erro conta no alarme de `Errors` da 6.3)
+- [x] `aws_lambda_permission` com `source_arn` no tópico; a assinatura `lambda` se confirma sozinha
+- [x] Smoke test concluído (apply, Publish manual zera a concorrência, apply religa com `0 -> -1`, apply sem mudança, destroy); `PutFunctionConcurrency(0)` aceito com o limite de 10 da conta
 
 ### 6.3 Alarmes
 - [ ] Alarme em `Invocations` da principal: `Sum > 10`, 60 s, 1 de 1, `notBreaching`, ação no SNS
