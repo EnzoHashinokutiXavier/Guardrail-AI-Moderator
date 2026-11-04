@@ -266,7 +266,7 @@ Marque `[x]` conforme for concluindo.
 - [x] Criar o tópico SNS `guardrails-*`
 - [x] Criar a assinatura de e-mail a partir de `ALERT_EMAIL`
 - [x] Tópico `guardrails-alertas`, Standard, em `infra/kill_switch.tf` (a 6.2 e a 6.3 continuam nele)
-- [x] Sem `kms_master_key_id`: alarme do CloudWatch não publica em tópico com `alias/aws/sns` (a prova real é a 6.3)
+- [x] Sem `kms_master_key_id`: alarme do CloudWatch não publica em tópico com `alias/aws/sns` (a 6.3 provou que publica no tópico sem criptografia)
 - [x] Protocolo `email`, com `endpoint` vindo de `var.alert_email` (`(sensitive value)` no plano)
 - [x] Confirmação manual a cada `destroy` + `apply`; a AWS apaga a assinatura pendente em 48 h
 - [x] Smoke test concluído (apply, confirmação, publicação manual, apply sem mudança, destroy)
@@ -283,8 +283,13 @@ Marque `[x]` conforme for concluindo.
 - [x] Smoke test concluído (apply, Publish manual zera a concorrência, apply religa com `0 -> -1`, apply sem mudança, destroy); `PutFunctionConcurrency(0)` aceito com o limite de 10 da conta
 
 ### 6.3 Alarmes
-- [ ] Alarme em `Invocations` da principal: `Sum > 10`, 60 s, 1 de 1, `notBreaching`, ação no SNS
-- [ ] Alarme em `Errors` da kill switch: `Sum > 0`, 60 s, ação no SNS
+- [x] Alarme em `Invocations` da principal: `Sum > 10`, 60 s, 1 de 1, `notBreaching`, ação no SNS
+- [x] Alarme em `Errors` da kill switch: `Sum > 0`, 60 s, ação no SNS
+- [x] Nomes `guardrails-moderador-invocacoes` e `guardrails-kill-switch-erros`, no fim do `infra/kill_switch.tf`
+- [x] Alarme de `Errors` também com 1 de 1 e `notBreaching` (com `missing` ficaria preso em ALARM e não avisaria uma segunda falha)
+- [x] Só `alarm_actions`: `ok_actions` no tópico derrubaria a API a cada volta para OK
+- [x] Sem `aws_sns_topic_policy`: a política padrão deixa o CloudWatch da conta publicar no tópico sem criptografia (comprovado no smoke test)
+- [x] Smoke test concluído (15 chamadas em sequência zeram a concorrência em ~65 s, `set-alarm-state` prova a ação do alarme de `Errors`, apply religa, apply sem mudança, destroy); o alarme volta a OK em ~6 min
 
 ---
 
