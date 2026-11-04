@@ -87,3 +87,45 @@ resource "aws_sns_topic_subscription" "alertas_kill_switch" {
   protocol  = "lambda"
   endpoint  = aws_lambda_function.kill_switch.arn
 }
+
+resource "aws_cloudwatch_metric_alarm" "moderador_invocacoes" {
+  alarm_name        = "${local.moderador_nome}-invocacoes"
+  alarm_description = "Mais de 10 invocações em 1 minuto: aciona o kill switch."
+
+  namespace   = "AWS/Lambda"
+  metric_name = "Invocations"
+  dimensions = {
+    FunctionName = aws_lambda_function.moderador.function_name
+  }
+
+  statistic           = "Sum"
+  period              = 60
+  evaluation_periods  = 1
+  datapoints_to_alarm = 1
+  comparison_operator = "GreaterThanThreshold"
+  threshold           = 10
+  treat_missing_data  = "notBreaching"
+
+  alarm_actions = [aws_sns_topic.alertas.arn]
+}
+
+resource "aws_cloudwatch_metric_alarm" "kill_switch_erros" {
+  alarm_name        = "${local.kill_switch_nome}-erros"
+  alarm_description = "A Lambda kill switch falhou: a API pode não ter caído."
+
+  namespace   = "AWS/Lambda"
+  metric_name = "Errors"
+  dimensions = {
+    FunctionName = aws_lambda_function.kill_switch.function_name
+  }
+
+  statistic           = "Sum"
+  period              = 60
+  evaluation_periods  = 1
+  datapoints_to_alarm = 1
+  comparison_operator = "GreaterThanThreshold"
+  threshold           = 0
+  treat_missing_data  = "notBreaching"
+
+  alarm_actions = [aws_sns_topic.alertas.arn]
+}
