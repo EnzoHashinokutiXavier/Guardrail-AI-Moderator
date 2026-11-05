@@ -296,11 +296,18 @@ Marque `[x]` conforme for concluindo.
 ## 7. Aplicação (Lambda principal)
 
 ### 7.1 Validação
-- [ ] Conferir o `Content-Type` = `application/json`, sem diferenciar maiúsculas e aceitando parâmetros como `; charset=utf-8` (o validator aceita, ver 5.4)
-- [ ] Validar o JSON e a presença de `texto` e `modo`
-- [ ] Validar `texto` como string de 1 a 1.000 caracteres
-- [ ] Validar `modo` com `type(modo) is int` e valor em 1, 2 ou 3
-- [ ] Devolver 400 com mensagem genérica
+- [x] Conferir o `Content-Type` = `application/json`, sem diferenciar maiúsculas e aceitando parâmetros como `; charset=utf-8` (o validator aceita, ver 5.4)
+- [x] Validar o JSON e a presença de `texto` e `modo`
+- [x] Validar `texto` como string de 1 a 1.000 caracteres
+- [x] Validar `modo` com `type(modo) is int` e valor em 1, 2 ou 3
+- [x] Devolver 400 com mensagem genérica
+- [x] `validar(event)` separada do handler: devolve `(texto, modo)` ou `None`; o 400 usa a mesma mensagem da Gateway Response `BAD_REQUEST_BODY` (`"requisição inválida"`)
+- [x] `Content-Type` ausente é recusado; comparação exata do tipo, sem o parâmetro (`application/jsonx` é recusado)
+- [x] `RecursionError` capturado junto com `ValueError` (JSON muito aninhado chega sem validação via `text/plain`)
+- [x] Surrogate solto (`"\ud800"`) recusado com 400 antes de qualquer chamada externa
+- [x] Requisição válida continua em 502 (fail closed) até a 7.5
+- [x] Medido: `text/plain` passa a receber 400 da Lambda (na 5.4 recebia 502); 6 chamadas na Lambda, nenhuma no limite do kill switch
+- [x] Quem respondeu se vê pelo corpo: a Lambda devolve `{"erro": "..."}` (com espaço), o API Gateway `{"erro":"..."}` (sem espaço)
 
 ### 7.2 Configuração e clientes
 - [ ] Ler a chave da OpenAI do SSM uma vez por container e cachear fora do handler
