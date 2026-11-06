@@ -416,6 +416,11 @@ Marque `[x]` conforme for concluindo.
 - [ ] Tabela de ameaças e mitigações
 - [ ] Licença não comercial (código público, não open source)
 
+### 10.4 Manual para criar moderadores de texto (pós-conclusão)
+- [ ] Após concluir e revisar o projeto, criar um manual em Markdown para ensinar a adaptar sua lógica e criar moderadores de texto para outros programas
+- [ ] Explicar o fluxo de moderação e como substituir ou integrar os serviços usados neste projeto
+- [ ] Separar os conceitos reutilizáveis das escolhas específicas de infraestrutura e serviços deste projeto
+
 ---
 
 ## 11. Conclusão
