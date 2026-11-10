@@ -316,6 +316,7 @@ Marque `[x]` conforme for concluindo.
 - [x] Clientes `ssm` e `comprehend` criados no import, com a mesma `Config`
 - [x] Chave lida na primeira requisição de modo 2 ou 3 (não no import): 400 e modo 1 não chamam o SSM, e falha do SSM não fica no cache nem derruba a fase INIT
 - [x] Erro do SSM sobe sem tratamento até a 7.6 (vira 5xx, fail closed)
+- [x] Medido: 5 chamadas com a resposta esperada (modo 1, 2, 3 e 2 → 502 da Lambda; `text/plain` → 400); 1 `GetParameter` no CloudTrail para 3 chamadas de modo 2/3, com `withDecryption` true e sem o valor da chave
 
 ### 7.3 Caso 1 — PII (Comprehend)
 - [ ] Chamar `DetectPiiEntities`
