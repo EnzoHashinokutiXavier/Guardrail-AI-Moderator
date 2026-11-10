@@ -310,8 +310,12 @@ Marque `[x]` conforme for concluindo.
 - [x] Quem respondeu se vê pelo corpo: a Lambda devolve `{"erro": "..."}` (com espaço), o API Gateway `{"erro":"..."}` (sem espaço)
 
 ### 7.2 Configuração e clientes
-- [ ] Ler a chave da OpenAI do SSM uma vez por container e cachear fora do handler
-- [ ] Configurar boto3 com `connect_timeout=1`, `read_timeout=3` e `max_attempts=2`
+- [x] Ler a chave da OpenAI do SSM uma vez por container e cachear fora do handler
+- [x] Configurar boto3 com `connect_timeout=1`, `read_timeout=3` e `total_max_attempts=2` (2 tentativas: 1 chamada + 1 retry)
+- [x] `total_max_attempts: 2` em vez de `max_attempts: 2`: no `Config` do boto3, `max_attempts` conta só os retries (seriam 3 tentativas e ~30 s no pior caso); conferido no código do botocore
+- [x] Clientes `ssm` e `comprehend` criados no import, com a mesma `Config`
+- [x] Chave lida na primeira requisição de modo 2 ou 3 (não no import): 400 e modo 1 não chamam o SSM, e falha do SSM não fica no cache nem derruba a fase INIT
+- [x] Erro do SSM sobe sem tratamento até a 7.6 (vira 5xx, fail closed)
 
 ### 7.3 Caso 1 — PII (Comprehend)
 - [ ] Chamar `DetectPiiEntities`
