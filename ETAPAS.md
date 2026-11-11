@@ -319,11 +319,16 @@ Marque `[x]` conforme for concluindo.
 - [x] Medido: 5 chamadas com a resposta esperada (modo 1, 2, 3 e 2 → 502 da Lambda; `text/plain` → 400); 1 `GetParameter` no CloudTrail para 3 chamadas de modo 2/3, com `withDecryption` true e sem o valor da chave
 
 ### 7.3 Caso 1 — PII (Comprehend)
-- [ ] Chamar `DetectPiiEntities`
-- [ ] Filtrar pela lista fechada de entidades e score ≥ 0,5
-- [ ] Fundir trechos sobrepostos ou adjacentes
-- [ ] Substituir por `***` do fim para o início
-- [ ] Converter offsets se necessário (caracteres não ASCII)
+- [x] Chamar `DetectPiiEntities`
+- [x] Filtrar pela lista fechada de entidades e score ≥ 0,5
+- [x] Fundir trechos sobrepostos ou adjacentes
+- [x] Substituir por `***` do fim para o início
+- [x] Converter offsets se necessário (caracteres não ASCII): não necessário, offsets em code points
+- [x] `redigir(texto, entidades)` separada da chamada ao Comprehend (`_detectar_pii`): a lógica de substituição testa sem mock
+- [x] Fusão com `<=` (adjacentes viram um `***` só) e `max` (entidade dentro de outra); separadas por 1 caractere continuam dois `***`
+- [x] O texto redigido substitui `texto` no handler: no modo 3 a OpenAI só recebe o texto já redigido
+- [x] Comprehend chamado antes da leitura do SSM (ordem do Caso 3)
+- [x] Medido no CloudShell: offsets em code points (20 em `"Café ☕ — ..."`, 13 com emoji fora do BMP), `EndOffset` exclusivo; texto só com espaços devolve `{"Entities": []}` sem erro
 
 ### 7.4 Caso 2 — Conteúdo impróprio (OpenAI)
 - [ ] Chamar a Moderation (`omni-moderation-latest`) via `urllib`, timeout de 3 s e 1 retry

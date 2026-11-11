@@ -142,7 +142,7 @@ Em nenhum caso de erro o texto é devolvido.
   - Score mínimo baixo de propósito: num guardrail, censurar demais é melhor do que deixar PII passar.
 - **Juntar os trechos sobrepostos ou adjacentes** antes de substituir: ordenar por `BeginOffset` e fundir intervalos que se tocam ou se sobrepõem num só. Sem isso, entidades sobrepostas corrompem o texto na substituição, e entidades coladas geram `******`.
 - Substituir cada intervalo resultante por `***`, aplicando as substituições **do fim para o início do texto** (ordenando por `BeginOffset` decrescente), senão os offsets das entidades seguintes se deslocam.
-- **Conferir os offsets com caracteres não ASCII:** testar com acento e emoji antes da PII (por exemplo, `"Café ☕ — my name is John Smith"`) para confirmar que os offsets do Comprehend batem com os índices de `str` do Python. Se não baterem, converter os offsets antes de substituir.
+- **Conferir os offsets com caracteres não ASCII:** testar com acento e emoji antes da PII (por exemplo, `"Café ☕ — my name is John Smith"`) para confirmar que os offsets do Comprehend batem com os índices de `str` do Python. Se não baterem, converter os offsets antes de substituir. **Confirmado no teste real:** o Comprehend devolve offsets em code points, iguais aos índices de `str` do Python (inclusive com emoji fora do BMP), com `EndOffset` exclusivo; nenhuma conversão é necessária.
 
 ### Caso 2 — Conteúdo inapropriado
 

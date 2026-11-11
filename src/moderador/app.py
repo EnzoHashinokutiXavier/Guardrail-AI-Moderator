@@ -1,4 +1,4 @@
-# Lambda principal. Etapa 7.2: validação e clientes; a moderação vem na 7.3 a 7.6.
+# Lambda principal. Etapa 7.3: validação, clientes e PII; o resto vem na 7.4 a 7.6.
 import json
 import os
 
@@ -7,6 +7,16 @@ from botocore.config import Config
 
 TEXTO_MAX = 1000
 MODOS = (1, 2, 3)
+
+# Caso 1 do PROJETO.md: só estas entidades, e só com Score >= 0,5.
+ENTIDADES_PII = frozenset({
+    "NAME", "EMAIL", "PHONE", "ADDRESS", "SSN",
+    "CREDIT_DEBIT_NUMBER", "CREDIT_DEBIT_CVV", "CREDIT_DEBIT_EXPIRY",
+    "PIN", "BANK_ACCOUNT_NUMBER", "BANK_ROUTING", "PASSPORT_NUMBER",
+    "DRIVER_ID", "IP_ADDRESS", "PASSWORD",
+})
+SCORE_MIN = 0.5
+CENSURA = "***"
 
 # Timeouts e retries do PROJETO.md ("Tratamento de falhas").
 # total_max_attempts conta a chamada inicial: 2 = 1 chamada + 1 retry.
@@ -75,6 +85,34 @@ def validar(event):
     return texto, modo
 
 
+def _intervalos_pii(entidades):
+    """Filtra as entidades e funde os trechos sobrepostos ou adjacentes."""
+    trechos = sorted(
+        (e["BeginOffset"], e["EndOffset"])
+        for e in entidades
+        if e["Type"] in ENTIDADES_PII and e["Score"] >= SCORE_MIN
+    )
+    fundidos = []
+    for inicio, fim in trechos:
+        if fundidos and inicio <= fundidos[-1][1]:
+            fundidos[-1][1] = max(fundidos[-1][1], fim)
+        else:
+            fundidos.append([inicio, fim])
+    return fundidos
+
+
+def redigir(texto, entidades):
+    """Troca cada trecho de PII por ***, do fim para o início do texto."""
+    for inicio, fim in reversed(_intervalos_pii(entidades)):
+        texto = texto[:inicio] + CENSURA + texto[fim:]
+    return texto
+
+
+def _detectar_pii(texto):
+    resposta = _comprehend.detect_pii_entities(Text=texto, LanguageCode="en")
+    return resposta["Entities"]
+
+
 def _obter_chave_openai():
     global _chave_openai
     if _chave_openai is None:
@@ -92,6 +130,10 @@ def handler(event, context):
         return _erro(400, "requisição inválida")
 
     texto, modo = requisicao
+    if modo in (1, 3):
+        # Caso 1. O resultado só sai na resposta a partir da 7.5.
+        texto = redigir(texto, _detectar_pii(texto))
+
     if modo in (2, 3):
         # Provisório: só prova a leitura do SSM. A 7.4 usa a chave na OpenAI.
         _obter_chave_openai()
