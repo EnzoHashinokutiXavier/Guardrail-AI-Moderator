@@ -162,7 +162,7 @@ Em nenhum caso de erro o texto é devolvido.
 - Se Comprehend ou OpenAI Moderation falharem/timeout, a resposta deve ser um erro (`502`, ver "Respostas de erro") — **nunca** devolver o texto sem a censura correspondente (fail closed). Um serviço de moderação que falha e libera texto sem censurar é pior do que um serviço que fica indisponível.
 - **Timeouts:**
   - Comprehend e SSM (boto3): `connect_timeout=1`, `read_timeout=3`, `retries={"total_max_attempts": 2, "mode": "standard"}` (2 tentativas: 1 chamada + 1 retry). No `Config` do boto3, `max_attempts` conta só os retries: `"max_attempts": 2` seriam 3 tentativas.
-  - OpenAI (`urllib`, sem dependências externas): `timeout=3`, no máximo 1 retry.
+  - OpenAI (`urllib`, sem dependências externas): `timeout=3`, no máximo 1 retry. O retry é imediato e cobre só timeout, erro de conexão e HTTP 500/502/503/504; erros 4xx (401, 403, 429) falham na primeira tentativa. O `timeout=3` do `urllib` vale por operação do socket (conectar e cada leitura), não pela chamada inteira.
   - O parâmetro do SSM é lido uma vez por container e cacheado em variável de módulo, fora do handler (ver "Segurança"). Assim, o SSM só entra no tempo da primeira invocação de cada container.
   - Lambda: timeout de **15 s**. Se ela estourar, o API Gateway responde 5xx sem devolver texto, o que continua sendo fail closed — por isso não é preciso checar o tempo restante no código. A soma dos piores casos com retries (cerca de 22 s com SSM, ou 14 s sem) pode passar de 15 s; nesse caso a requisição vira 5xx, o que é aceitável.
 

@@ -332,8 +332,16 @@ Marque `[x]` conforme for concluindo.
 - [x] Medido pela API: modos 1, 3 e 2 → 502 da Lambda (Comprehend chamado pela role sem erro); `text/plain` → 400
 
 ### 7.4 Caso 2 — Conteúdo impróprio (OpenAI)
-- [ ] Chamar a Moderation (`omni-moderation-latest`) via `urllib`, timeout de 3 s e 1 retry
-- [ ] Se sinalizado, devolver `***`
+- [x] Chamar a Moderation (`omni-moderation-latest`) via `urllib`, timeout de 3 s e 1 retry
+- [x] Se sinalizado, devolver `***`
+- [x] `_consultar_openai(texto)` (rede e retry) separada de `sinalizado(resposta)` (função pura, testa sem mock)
+- [x] 2 tentativas no total, sem espera entre elas; retry só em timeout, erro de conexão e HTTP 500/502/503/504; 4xx (401, 403, 429) sobe na primeira
+- [x] `flagged is not False`: só o `false` exato libera; resposta fora do formato levanta erro (fail closed)
+- [x] Texto sinalizado já devolve 200 com `{"texto_censurado": "***"}`; texto não sinalizado continua em 502 até a 7.5
+- [x] A chave é lida dentro de `_consultar_openai`: modo 1 e 400 não leem o SSM nem chamam a OpenAI
+- [x] Erro da OpenAI sobe sem tratamento até a 7.6 (vira 5xx, fail closed)
+- [x] `timeout=3` do `urlopen` vale por operação do socket (conectar e cada leitura), não pela chamada inteira; o teto é o timeout de 15 s da Lambda
+- [x] Medido pela API: modos 2 e 3 com texto sinalizado → 200 `***`; texto limpo e modo 1 → 502 da Lambda; `text/plain` → 400
 
 ### 7.5 Caso 3 e resposta
 - [ ] Encadear Comprehend → OpenAI com o texto já redigido
