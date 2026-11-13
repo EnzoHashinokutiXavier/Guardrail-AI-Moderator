@@ -329,6 +329,7 @@ Marque `[x]` conforme for concluindo.
 - [x] O texto redigido substitui `texto` no handler: no modo 3 a OpenAI só recebe o texto já redigido
 - [x] Comprehend chamado antes da leitura do SSM (ordem do Caso 3)
 - [x] Medido no CloudShell: offsets em code points (20 em `"Café ☕ — ..."`, 13 com emoji fora do BMP), `EndOffset` exclusivo; texto só com espaços devolve `{"Entities": []}` sem erro
+- [x] Medido pela API: modos 1, 3 e 2 → 502 da Lambda (Comprehend chamado pela role sem erro); `text/plain` → 400
 
 ### 7.4 Caso 2 — Conteúdo impróprio (OpenAI)
 - [ ] Chamar a Moderation (`omni-moderation-latest`) via `urllib`, timeout de 3 s e 1 retry

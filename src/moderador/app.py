@@ -1,6 +1,8 @@
-# Lambda principal. Etapa 7.3: validação, clientes e PII; o resto vem na 7.4 a 7.6.
+# Lambda principal. Etapa 7.4: validação, clientes, PII e OpenAI; o resto vem na 7.5 e 7.6.
 import json
 import os
+import urllib.error
+import urllib.request
 
 import boto3
 from botocore.config import Config
@@ -17,6 +19,15 @@ ENTIDADES_PII = frozenset({
 })
 SCORE_MIN = 0.5
 CENSURA = "***"
+
+# Caso 2 do PROJETO.md: Moderation da OpenAI, via urllib (sem dependências).
+URL_OPENAI = "https://api.openai.com/v1/moderations"
+MODELO_OPENAI = "omni-moderation-latest"
+TIMEOUT_OPENAI = 3
+# Total de tentativas, contando a primeira: 2 = 1 chamada + 1 retry.
+TENTATIVAS_OPENAI = 2
+# Só estes status HTTP valem uma segunda tentativa.
+STATUS_RETRY = frozenset({500, 502, 503, 504})
 
 # Timeouts e retries do PROJETO.md ("Tratamento de falhas").
 # total_max_attempts conta a chamada inicial: 2 = 1 chamada + 1 retry.
@@ -124,6 +135,35 @@ def _obter_chave_openai():
     return _chave_openai
 
 
+def _consultar_openai(texto):
+    """Manda o texto à Moderation e devolve o JSON da resposta."""
+    corpo = json.dumps({"model": MODELO_OPENAI, "input": texto}).encode("utf-8")
+    requisicao = urllib.request.Request(
+        URL_OPENAI,
+        data=corpo,
+        headers={
+            "Authorization": "Bearer " + _obter_chave_openai(),
+            "Content-Type": "application/json",
+        },
+        method="POST",
+    )
+    for tentativa in range(1, TENTATIVAS_OPENAI + 1):
+        try:
+            with urllib.request.urlopen(requisicao, timeout=TIMEOUT_OPENAI) as resposta:
+                return json.load(resposta)
+        except urllib.error.HTTPError as erro:
+            if tentativa == TENTATIVAS_OPENAI or erro.code not in STATUS_RETRY:
+                raise
+        except OSError:
+            if tentativa == TENTATIVAS_OPENAI:
+                raise
+
+
+def sinalizado(resposta):
+    """True se a Moderation sinalizou o texto. Só o False exato libera."""
+    return resposta["results"][0]["flagged"] is not False
+
+
 def handler(event, context):
     requisicao = validar(event)
     if requisicao is None:
@@ -134,9 +174,9 @@ def handler(event, context):
         # Caso 1. O resultado só sai na resposta a partir da 7.5.
         texto = redigir(texto, _detectar_pii(texto))
 
-    if modo in (2, 3):
-        # Provisório: só prova a leitura do SSM. A 7.4 usa a chave na OpenAI.
-        _obter_chave_openai()
+    if modo in (2, 3) and sinalizado(_consultar_openai(texto)):
+        # Caso 2: texto sinalizado sai inteiro como ***.
+        return _resposta(200, {"texto_censurado": CENSURA})
 
-    # Provisório até a 7.5: requisição válida continua em fail closed.
+    # Provisório até a 7.5: texto não sinalizado continua em fail closed.
     return _erro(502, "serviço de moderação indisponível")
