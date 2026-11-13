@@ -1,4 +1,4 @@
-# Lambda principal. Etapa 7.4: validação, clientes, PII e OpenAI; o resto vem na 7.5 e 7.6.
+# Lambda principal. Etapa 7.5: validação, PII, OpenAI e resposta; falhas e logs vêm na 7.6.
 import json
 import os
 import urllib.error
@@ -171,12 +171,12 @@ def handler(event, context):
 
     texto, modo = requisicao
     if modo in (1, 3):
-        # Caso 1. O resultado só sai na resposta a partir da 7.5.
+        # Caso 1: PII trocada por ***.
         texto = redigir(texto, _detectar_pii(texto))
 
     if modo in (2, 3) and sinalizado(_consultar_openai(texto)):
         # Caso 2: texto sinalizado sai inteiro como ***.
-        return _resposta(200, {"texto_censurado": CENSURA})
+        texto = CENSURA
 
-    # Provisório até a 7.5: texto não sinalizado continua em fail closed.
-    return _erro(502, "serviço de moderação indisponível")
+    # Só chega aqui o texto que passou por todas as etapas do modo, sem erro.
+    return _resposta(200, {"texto_censurado": texto})

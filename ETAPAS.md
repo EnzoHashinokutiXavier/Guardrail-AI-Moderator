@@ -344,9 +344,16 @@ Marque `[x]` conforme for concluindo.
 - [x] Medido pela API: modos 2 e 3 com texto sinalizado → 200 `***`; texto limpo e modo 1 → 502 da Lambda; `text/plain` → 400
 
 ### 7.5 Caso 3 e resposta
-- [ ] Encadear Comprehend → OpenAI com o texto já redigido
-- [ ] Combinar o resultado final (`***` se sinalizado, senão texto com PII redigida)
-- [ ] Devolver `{"texto_censurado": ...}`
+- [x] Encadear Comprehend → OpenAI com o texto já redigido
+- [x] Combinar o resultado final (`***` se sinalizado, senão texto com PII redigida)
+- [x] Devolver `{"texto_censurado": ...}`
+- [x] Encadeamento já vinha da 7.4 (mesma variável `texto`, Comprehend antes da OpenAI); a 7.5 só acrescenta a prova
+- [x] Uma saída só: `texto = CENSURA` se sinalizado e um único `return _resposta(200, {"texto_censurado": texto})`
+- [x] Resposta só com `texto_censurado`; acento e emoji voltam como caracteres (`ensure_ascii=False`)
+- [x] Sem `try/except` no handler: toda falha sobe e vira 5xx do API Gateway até a 7.6; o 502 provisório saiu
+- [x] Modo 1 devolve conteúdo impróprio sem censura; modo 2 devolve a PII (comportamento esperado dos modos)
+- [x] Medido localmente: `py_compile` sem saída e 44 verificações, 0 falhas (Comprehend e OpenAI falsos)
+- [ ] Medir pela API (conferência final da 7.5): os três modos com 200, offsets com acento e emoji, texto só com espaços no modo 3, logs sem texto
 
 ### 7.6 Falhas e logs
 - [ ] Devolver 502 em falha/timeout de Comprehend ou OpenAI (fail closed)
