@@ -353,7 +353,8 @@ Marque `[x]` conforme for concluindo.
 - [x] Sem `try/except` no handler: toda falha sobe e vira 5xx do API Gateway até a 7.6; o 502 provisório saiu
 - [x] Modo 1 devolve conteúdo impróprio sem censura; modo 2 devolve a PII (comportamento esperado dos modos)
 - [x] Medido localmente: `py_compile` sem saída e 44 verificações, 0 falhas (Comprehend e OpenAI falsos)
-- [ ] Medir pela API (conferência final da 7.5): os três modos com 200, offsets com acento e emoji, texto só com espaços no modo 3, logs sem texto
+- [x] Medido pela API: os três modos com 200 (PII → `***`, texto limpo volta igual, sinalizado → `***`, nome + ameaça no modo 3 → só `***`); `"Café ☕ — my name is John Smith"` → `"Café ☕ — my name is ***"`; texto só com espaços no modo 3 volta igual (a Moderation aceita); `text/plain` → 400
+- [x] Conferido no Console depois do teste: logs só com START/END/REPORT (nenhum texto), 9 invocações e 0 erros, alarme OK
 
 ### 7.6 Falhas e logs
 - [ ] Devolver 502 em falha/timeout de Comprehend ou OpenAI (fail closed)

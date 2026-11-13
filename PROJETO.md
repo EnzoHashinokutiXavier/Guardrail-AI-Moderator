@@ -72,7 +72,7 @@ Rota: `POST /v1/moderar` (`https://<id>.execute-api.us-east-1.amazonaws.com/v1/m
 }
 ```
 
-- `texto`: obrigatório, string de **1 a 1.000 caracteres**. Texto vazio é rejeitado com 400, porque o `DetectPiiEntities` não aceita texto vazio e, pela regra de fail closed, o erro dele viraria 5xx. Texto só com espaços é aceito e devolvido como está, já que não há o que censurar.
+- `texto`: obrigatório, string de **1 a 1.000 caracteres**. Texto vazio é rejeitado com 400, porque o `DetectPiiEntities` não aceita texto vazio e, pela regra de fail closed, o erro dele viraria 5xx. Texto só com espaços é aceito e devolvido como está, já que não há o que censurar. **Confirmado no teste real:** o Comprehend e a OpenAI Moderation aceitam texto só com espaços, e no modo 3 ele volta igual.
 - `modo`: obrigatório, **inteiro** (`"1"` ou `1.0` são rejeitados):
   - `1` → censurar apenas informações pessoais
   - `2` → censurar apenas conteúdo inapropriado
@@ -142,7 +142,7 @@ Em nenhum caso de erro o texto é devolvido.
   - Score mínimo baixo de propósito: num guardrail, censurar demais é melhor do que deixar PII passar.
 - **Juntar os trechos sobrepostos ou adjacentes** antes de substituir: ordenar por `BeginOffset` e fundir intervalos que se tocam ou se sobrepõem num só. Sem isso, entidades sobrepostas corrompem o texto na substituição, e entidades coladas geram `******`.
 - Substituir cada intervalo resultante por `***`, aplicando as substituições **do fim para o início do texto** (ordenando por `BeginOffset` decrescente), senão os offsets das entidades seguintes se deslocam.
-- **Conferir os offsets com caracteres não ASCII:** testar com acento e emoji antes da PII (por exemplo, `"Café ☕ — my name is John Smith"`) para confirmar que os offsets do Comprehend batem com os índices de `str` do Python. Se não baterem, converter os offsets antes de substituir. **Confirmado no teste real:** o Comprehend devolve offsets em code points, iguais aos índices de `str` do Python (inclusive com emoji fora do BMP), com `EndOffset` exclusivo; nenhuma conversão é necessária.
+- **Conferir os offsets com caracteres não ASCII:** testar com acento e emoji antes da PII (por exemplo, `"Café ☕ — my name is John Smith"`) para confirmar que os offsets do Comprehend batem com os índices de `str` do Python. Se não baterem, converter os offsets antes de substituir. **Confirmado no teste real:** o Comprehend devolve offsets em code points, iguais aos índices de `str` do Python (inclusive com emoji fora do BMP), com `EndOffset` exclusivo; nenhuma conversão é necessária. Confirmado também pela API: `"Café ☕ — my name is John Smith"` no modo 1 devolve `"Café ☕ — my name is ***"`.
 
 ### Caso 2 — Conteúdo inapropriado
 
@@ -155,7 +155,8 @@ Em nenhum caso de erro o texto é devolvido.
 
 - **Ordem fixa: Comprehend (Caso 1) sempre primeiro, depois OpenAI Moderation (Caso 2).**
 - A OpenAI Moderation recebe o texto **já processado pelo Comprehend** (PII substituída por `***`), nunca o original — é esse encadeamento, e não só a ordem das chamadas, que evita enviar PII de terceiros à OpenAI (ver "Região da AWS" para o alcance dessa proteção em relação à LGPD). A proteção vale para o que o Caso 1 censura: entidades fora da lista, abaixo do score mínimo ou não detectadas (por exemplo, em texto que não está em inglês) seguem para a OpenAI.
-- **Combinação final:** se a OpenAI sinalizar o texto (já com PII redigida) como impróprio, vale a regra do Caso 2 — a resposta final é `"***"` inteiro, substituindo inclusive as marcações de PII que já haviam sido feitas (ver exemplo em "Contrato da API"). Se a OpenAI não sinalizar nada, a resposta final é o texto com PII redigida pelo Comprehend, sem alteração adicional.
+- **Combinação final:** se a OpenAI sinalizar o texto (já com PII redigida) como impróprio, vale a regra do Caso 2 — a resposta final é `"***"` inteiro, substituindo inclusive as marcações de PII que já haviam sido feitas (ver exemplo em "Contrato da API"). Se a OpenAI não sinalizar nada, a resposta final é o texto com PII redigida pelo Comprehend, sem alteração adicional. **Confirmado no teste real:** no modo 3, nome + ameaça devolve só `"***"`, e só o nome devolve o texto com o nome trocado por `***`.
+- **O que cada modo não faz:** o modo 1 não modera conteúdo (uma ameaça volta sem censura) e o modo 2 não censura PII (ela volta na resposta). É o comportamento esperado dos modos, confirmado no teste real, e deve constar do README.
 
 ### Tratamento de falhas
 
