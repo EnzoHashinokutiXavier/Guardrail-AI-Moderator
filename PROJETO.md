@@ -161,6 +161,8 @@ Em nenhum caso de erro o texto é devolvido.
 ### Tratamento de falhas
 
 - Se Comprehend ou OpenAI Moderation falharem/timeout, a resposta deve ser um erro (`502`, ver "Respostas de erro") — **nunca** devolver o texto sem a censura correspondente (fail closed). Um serviço de moderação que falha e libera texto sem censurar é pior do que um serviço que fica indisponível.
+  - A falha do SSM ao ler a chave da OpenAI também vira `502`: sem a chave não há Moderation. **Confirmado no teste real:** com a variável `PARAMETRO_OPENAI` apontando para um parâmetro fora da policy, os modos 2 e 3 devolvem 502 da Lambda (no modo 3, nem o texto já redigido volta) e o modo 1 continua com 200.
+  - O `502` cobre uma lista fechada de erros (os do boto3/botocore, de rede/HTTP e de resposta em formato inesperado). Erro fora dessa lista é defeito de código: sobe sem tratamento e vira 5xx do API Gateway, o que continua sendo fail closed.
 - **Timeouts:**
   - Comprehend e SSM (boto3): `connect_timeout=1`, `read_timeout=3`, `retries={"total_max_attempts": 2, "mode": "standard"}` (2 tentativas: 1 chamada + 1 retry). No `Config` do boto3, `max_attempts` conta só os retries: `"max_attempts": 2` seriam 3 tentativas.
   - OpenAI (`urllib`, sem dependências externas): `timeout=3`, no máximo 1 retry. O retry é imediato e cobre só timeout, erro de conexão e HTTP 500/502/503/504; erros 4xx (401, 403, 429) falham na primeira tentativa. O `timeout=3` do `urllib` vale por operação do socket (conectar e cada leitura), não pela chamada inteira.
@@ -191,6 +193,7 @@ Em nenhum caso de erro o texto é devolvido.
   - **Limite de tamanho: `maxLength` de 1.000 caracteres**, no Request Validator e na Lambda. O `DetectPiiEntities` aceita até 100 KB de UTF-8 por chamada síncrona e a OpenAI Moderation tem limite próprio — ambos muito acima disso, então a Lambda nunca paga uma chamada externa só para receber erro de tamanho. O valor é definido pelo custo: 1.000 caracteres = no máximo 10 unidades do Comprehend por chamada (ver "Custos").
 - O Comprehend pode errar (falso negativo/positivo); o README não deve apresentar o serviço como garantia de anonimização.
 - **Logs:** nunca logar `texto` ou `texto_censurado` em texto puro no CloudWatch (podem conter PII). Logar apenas metadados: modo, tamanho do texto, latência, status da resposta.
+  - Formato: uma linha JSON por requisição que chega à Lambda (200, 400 ou 502), com `status`, `modo`, `tamanho` (da entrada, em caracteres) e `ms`. No 400, `modo` e `tamanho` ficam `null`. Na falha, mais `falha` (o nome da classe do erro) e `codigo` (status HTTP da OpenAI ou código de erro da AWS) — **nunca** a mensagem do erro, que pode citar dado da requisição. **Confirmado no teste real:** as linhas aparecem no CloudWatch sem prefixo, sem texto e sem traceback.
   - Definir **retenção explícita** (ex.: 14 dias) via Terraform nos log groups das duas Lambdas (principal e kill switch). Por padrão o CloudWatch Logs mantém os logs indefinidamente ("never expire"). Não há access log do API Gateway.
   - O log group é criado pelo Terraform **antes** da função (`logging_config` apontando para ele, ou `depends_on`). Se a Lambda rodar antes, ela cria o log group sozinha, sem retenção, e o `apply` seguinte falha com `ResourceAlreadyExistsException`. O mesmo acontece se sobrar um log group de um `destroy` anterior: apagá-lo pelo Console antes do `apply`.
 - Manter Parameter Store (não migrar para Secrets Manager) — Secrets Manager cobra por secret armazenado (~$0,40/mês) e por chamada; não traz benefício necessário aqui (a rotação manual via `value_wo_version` basta), então o Parameter Store `SecureString` é a opção correta tanto por segurança quanto por custo.
@@ -351,7 +354,7 @@ Resumo das principais ameaças consideradas e como o design responde a cada uma 
 | Texto enviado ao Comprehend usado pela AWS para melhorar o serviço | AI services opt-out policy no AWS Organizations |
 | Action de terceiro comprometida no CI (com acesso à role de deploy) | Actions fixadas por SHA de commit (exigido também nas configurações do repositório), `permissions:` mínimas, sem `pull_request_target`, aprovação obrigatória para workflows de PR de fork |
 | Prompt injection via texto do usuário | Nenhum modelo generativo decide o que censurar |
-| Falha de um serviço de moderação liberando conteúdo não censurado | Fail-closed: erro/timeout retorna 5xx |
+| Falha de um serviço de moderação liberando conteúdo não censurado | Fail-closed: erro/timeout retorna 502 (ou 5xx do API Gateway, se a Lambda estourar o timeout ou o erro estiver fora da lista de falhas) |
 | Requisição malformada consumindo invocação da Lambda | Request Validator do API Gateway (tipo e valor de `modo`, tamanho mínimo e máximo de `texto`). Desvio confirmado por `Content-Type` diferente, rejeitado pela Lambda (ver "Segurança") |
 | Custo fixo por hora sem tráfego (ex.: NAT Gateway) | Lambda sem VPC |
 | Credenciais AWS de longa duração vazadas | Deploy via GitHub Actions com **OIDC** (sem access keys estáticas); bootstrap único via Console AWS |

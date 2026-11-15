@@ -357,8 +357,18 @@ Marque `[x]` conforme for concluindo.
 - [x] Conferido no Console depois do teste: logs só com START/END/REPORT (nenhum texto), 9 invocações e 0 erros, alarme OK
 
 ### 7.6 Falhas e logs
-- [ ] Devolver 502 em falha/timeout de Comprehend ou OpenAI (fail closed)
-- [ ] Logar só metadados (modo, tamanho, latência, status)
+- [x] Devolver 502 em falha/timeout de Comprehend ou OpenAI (fail closed)
+- [x] Logar só metadados (modo, tamanho, latência, status)
+- [x] `moderar(texto, modo)` separada do handler: o `try` tem uma linha só, e o `except` termina em `return _erro(502, ...)`
+- [x] Lista fechada `FALHAS` (`BotoCoreError`, `ClientError`, `OSError`, `http.client.HTTPException`, `ValueError`, `LookupError`, `TypeError`), sem `except Exception`: defeito de código continua subindo e virando 5xx do API Gateway
+- [x] Falha do SSM também vira 502 (sem a chave não há OpenAI)
+- [x] O `return` do 200 usa `censurado`, que só existe se `moderar` devolveu: um `except` sem `return` dá `UnboundLocalError`, não texto
+- [x] Uma linha JSON por requisição via `print`: `status`, `modo`, `tamanho` (entrada, em caracteres) e `ms`; na falha, `falha` (nome da classe) e `codigo` (status HTTP ou código da AWS); nunca a mensagem do erro
+- [x] No 400, `modo` e `tamanho` ficam `null` (o que veio na requisição inválida não vai para o log)
+- [x] Falha de moderação deixa de contar na métrica `Errors` da Lambda e de gerar traceback; o diagnóstico é a linha de log
+- [x] Medido localmente: `py_compile` sem saída e 46 verificações, 0 falhas
+- [x] Medido pela API: os três modos com 200 e `text/plain` → 400, iguais à 7.5; com `PARAMETRO_OPENAI = guardrails-nao-existe`, modos 2 e 3 → 502 da Lambda `{"erro": "serviço de moderação indisponível"}` (sem texto; no modo 3 o redigido também não volta) e modo 1 → 200
+- [x] Conferido no Console depois do teste: uma linha JSON por invocação, sem texto nem traceback (502 com `ClientError` / `AccessDeniedException`), 7 invocações e 0 erros, alarme OK
 
 ---
 
