@@ -1,11 +1,14 @@
-# Lambda principal. Etapa 7.5: validação, PII, OpenAI e resposta; falhas e logs vêm na 7.6.
+# Lambda principal. Etapa 7.6: validação, PII, OpenAI, resposta, falhas (502) e log de metadados.
+import http.client
 import json
 import os
+import time
 import urllib.error
 import urllib.request
 
 import boto3
 from botocore.config import Config
+from botocore.exceptions import BotoCoreError, ClientError
 
 TEXTO_MAX = 1000
 MODOS = (1, 2, 3)
@@ -28,6 +31,18 @@ TIMEOUT_OPENAI = 3
 TENTATIVAS_OPENAI = 2
 # Só estes status HTTP valem uma segunda tentativa.
 STATUS_RETRY = frozenset({500, 502, 503, 504})
+
+# Falhas de moderação que viram 502 (fail closed). O que não está aqui sobe e vira 5xx.
+FALHAS = (
+    BotoCoreError,  # Comprehend e SSM: timeout, conexão, parâmetros
+    ClientError,  # Comprehend e SSM: erro devolvido pelo serviço
+    OSError,  # OpenAI: timeout, conexão e HTTPError (4xx/5xx)
+    http.client.HTTPException,  # OpenAI: resposta HTTP cortada ou malformada
+    ValueError,  # OpenAI: corpo que não é JSON
+    LookupError,  # resposta sem o campo esperado (KeyError, IndexError)
+    TypeError,  # resposta que não é dicionário/lista
+)
+MSG_INDISPONIVEL = "serviço de moderação indisponível"
 
 # Timeouts e retries do PROJETO.md ("Tratamento de falhas").
 # total_max_attempts conta a chamada inicial: 2 = 1 chamada + 1 retry.
@@ -164,12 +179,8 @@ def sinalizado(resposta):
     return resposta["results"][0]["flagged"] is not False
 
 
-def handler(event, context):
-    requisicao = validar(event)
-    if requisicao is None:
-        return _erro(400, "requisição inválida")
-
-    texto, modo = requisicao
+def moderar(texto, modo):
+    """Devolve o texto censurado conforme o modo. Qualquer falha levanta exceção."""
     if modo in (1, 3):
         # Caso 1: PII trocada por ***.
         texto = redigir(texto, _detectar_pii(texto))
@@ -178,5 +189,49 @@ def handler(event, context):
         # Caso 2: texto sinalizado sai inteiro como ***.
         texto = CENSURA
 
+    return texto
+
+
+def _codigo(erro):
+    """Status HTTP da OpenAI ou código de erro da AWS. Nunca a mensagem."""
+    if isinstance(erro, urllib.error.HTTPError):
+        return erro.code
+    if isinstance(erro, ClientError):
+        return erro.response.get("Error", {}).get("Code")
+    return None
+
+
+def _logar(inicio, status, modo=None, tamanho=None, erro=None):
+    """Uma linha de metadados por requisição. Nunca o texto nem a mensagem do erro."""
+    registro = {
+        "status": status,
+        "modo": modo,
+        "tamanho": tamanho,
+        "ms": round((time.monotonic() - inicio) * 1000),
+    }
+    if erro is not None:
+        registro["falha"] = type(erro).__name__
+        registro["codigo"] = _codigo(erro)
+    print(json.dumps(registro))
+
+
+def handler(event, context):
+    inicio = time.monotonic()
+
+    requisicao = validar(event)
+    if requisicao is None:
+        _logar(inicio, 400)
+        return _erro(400, "requisição inválida")
+
+    texto, modo = requisicao
+    tamanho = len(texto)
+    try:
+        censurado = moderar(texto, modo)
+    except FALHAS as erro:
+        # Fail closed: a falha termina aqui, sem texto na resposta.
+        _logar(inicio, 502, modo, tamanho, erro)
+        return _erro(502, MSG_INDISPONIVEL)
+
     # Só chega aqui o texto que passou por todas as etapas do modo, sem erro.
-    return _resposta(200, {"texto_censurado": texto})
+    _logar(inicio, 200, modo, tamanho)
+    return _resposta(200, {"texto_censurado": censurado})
