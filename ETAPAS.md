@@ -145,7 +145,7 @@ Marque `[x]` conforme for concluindo.
 - [x] Push só na `main` (evita execução duplicada em PR de branch própria)
 - [x] Rodar os testes unitários (pytest)
 - [x] Fixar a versão do pytest (`9.1.1`) e o Python em `3.13` (mesma da Lambda)
-- [x] Aceitar o código 5 do pytest (nenhum teste coletado) só até a etapa 8
+- [x] Aceitar o código 5 do pytest (nenhum teste coletado) só até a etapa 8 — removido na 8.0
 - [x] Rodar `terraform fmt -check`
 - [x] Rodar `terraform init -backend=false` e `terraform validate`
 - [x] Fixar o Terraform em `1.11.4` (mesma versão a usar no `apply`/`destroy`)
@@ -375,8 +375,15 @@ Marque `[x]` conforme for concluindo.
 ## 8. Testes unitários
 
 ### 8.0 Configuração
-- [ ] Criar o `pytest.ini` (`testpaths = tests`, `pythonpath = src`)
-- [ ] Remover do workflow `test` a aceitação do código 5 (`|| [ "$?" -eq 5 ]`)
+- [x] Criar o `pytest.ini` (`testpaths = tests`, `pythonpath = src`)
+- [x] Remover do workflow `test` a aceitação do código 5 (`|| [ "$?" -eq 5 ]`)
+- [x] boto3 e botocore reais no CI (`boto3==1.44.2 botocore==1.44.2`, só para os testes; a Lambda continua usando os do runtime e o zip não muda), no lugar de módulos falsos (opção b da 7.6). 1.44.3 descartada: publicada havia 3 dias
+- [x] `tests/conftest.py`: região `us-east-1` e credenciais falsas antes do import do `app.py` (cria os clientes no import); `AWS_PROFILE` e `AWS_SESSION_TOKEN` removidos
+- [x] Fixture `sem_rede` (autouse): bloqueia `socket.getaddrinfo` e `socket.socket.connect`; tentativa de rede reprova o teste no teardown, mesmo que o botocore a tenha embrulhado num 502
+- [x] `tests/test_ambiente.py` com 4 testes da configuração (import, região, hierarquia real do botocore, rede bloqueada); fecha o "NÃO validado" da 7.6
+- [x] Sem `__init__.py` em `src/*/` e em `tests/`: nomes de arquivo de teste únicos
+- [x] Medido localmente (Python 3.14): `4 passed`; mutações (sem região → `NoRegionError` na coleta; sem o `clear` → ERROR no teardown)
+- [x] Medido no CI: `4 passed` no Python 3.13.18, sem o `|| [ ... -eq 5 ]`
 
 ### 8.1 Substituição
 - [ ] Substituição simples de uma entidade
