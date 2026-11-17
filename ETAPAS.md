@@ -410,9 +410,17 @@ Marque `[x]` conforme for concluindo.
 - [x] Medido no CI: `37 passed` no Python 3.13
 
 ### 8.3 Validação
-- [ ] Texto vazio, ausente e acima de 1.000 caracteres
-- [ ] `modo` como `"1"`, `1.0` e `true`
-- [ ] JSON malformado e `Content-Type` errado
+- [x] Texto vazio, ausente e acima de 1.000 caracteres
+- [x] `modo` como `"1"`, `1.0` e `true`
+- [x] JSON malformado e `Content-Type` errado
+- [x] `tests/test_validacao.py` com 65 testes: 58 de `validar` direto (função pura, sem mock) e 7 pelo `handler` (400, corpo exato, log)
+- [x] Testes do que TEM de passar (1 e 1.000 caracteres, só espaços, 1.000 acentos/emojis, `charset`, header minúsculo), não só do que é recusado
+- [x] Casos que o script da 7.1 não cobria: acento e emoji, `NaN`, `Infinity`, `1e400`, `1e0`, `text/plain; x=application/json`
+- [x] Fixtures `comprehend`, `ssm` e `openai` movidas do `test_modos.py` para o `conftest.py` (import do `app` depois do `os.environ`); o 400 pelo `handler` usa as três vazias para provar que nenhum serviço foi chamado
+- [x] Corpo do 400 comparado como string (`{"erro": "requisição inválida"}`, com espaço e acento); no log do 400, `modo` e `tamanho` `null` e nada do texto
+- [x] `pytest.param(..., id=...)` em todo caso: sem id, o JSON aninhado vira nome de teste e estoura o limite de 32.767 caracteres da variável `PYTEST_CURRENT_TEST` no Windows
+- [x] Medido localmente (Python 3.14): `102 passed`; 16 mutações no `app.py` (limites de tamanho, bytes em vez de caracteres, `isinstance`/sem `type` no `modo`, sem `encode`, sem `RecursionError`, Content-Type sem `lower`/`split`/com `startswith`/ausente aceito, sem `isinstance(dados, dict)`, sem `type(texto)`, log com tamanho), todas reprovadas
+- [x] Medido no CI: `102 passed` no Python 3.13 (inclusive o `json_invalido[aninhado]`: `RecursionError` também no 3.13)
 
 ### 8.4 Falhas
 - [ ] Fail closed com erro do Comprehend
