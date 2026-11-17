@@ -1,11 +1,7 @@
-# Etapa 8.2: os três modos de moderar. Comprehend e SSM com Stubber; OpenAI com urlopen falso.
-import io
+# Etapa 8.2: os três modos de moderar. Fixtures comprehend, ssm e openai no conftest.py (8.3).
 import json
-import types
-import urllib.request
 
 import pytest
-from botocore.stub import Stubber
 
 from moderador import app
 
@@ -21,38 +17,6 @@ def trecho(texto, parte):
     """Offsets (início, fim exclusivo) de parte dentro de texto, em code points."""
     inicio = texto.index(parte)
     return inicio, inicio + len(parte)
-
-
-@pytest.fixture
-def comprehend():
-    """Stubber no cliente do Comprehend. Chamada sem resposta cadastrada levanta erro."""
-    with Stubber(app._comprehend) as stubber:
-        yield stubber
-        stubber.assert_no_pending_responses()
-
-
-@pytest.fixture
-def ssm(monkeypatch):
-    """Stubber no cliente do SSM, com o cache da chave zerado (e restaurado no fim)."""
-    monkeypatch.setattr(app, "_chave_openai", None)
-    with Stubber(app._ssm) as stubber:
-        yield stubber
-        stubber.assert_no_pending_responses()
-
-
-@pytest.fixture
-def openai(monkeypatch):
-    """Moderation falsa no lugar do urlopen. falsa.flagged decide a resposta."""
-    falsa = types.SimpleNamespace(flagged=False, requisicoes=[], timeouts=[])
-
-    def urlopen(requisicao, timeout):
-        falsa.requisicoes.append(requisicao)
-        falsa.timeouts.append(timeout)
-        corpo = {"results": [{"flagged": falsa.flagged}]}
-        return io.BytesIO(json.dumps(corpo).encode("utf-8"))
-
-    monkeypatch.setattr(urllib.request, "urlopen", urlopen)
-    return falsa
 
 
 def esperar_pii(stubber, texto, entidades):
