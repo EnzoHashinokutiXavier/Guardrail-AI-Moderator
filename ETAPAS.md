@@ -398,9 +398,16 @@ Marque `[x]` conforme for concluindo.
 - [x] Medido no CI: `23 passed` no Python 3.13.18
 
 ### 8.2 Modos
-- [ ] Modo 1
-- [ ] Modo 2 (sinalizado e não sinalizado)
-- [ ] Modo 3 (OpenAI recebe o texto redigido, combinação final)
+- [x] Modo 1
+- [x] Modo 2 (sinalizado e não sinalizado)
+- [x] Modo 3 (OpenAI recebe o texto redigido, combinação final)
+- [x] `tests/test_modos.py` com 14 testes de `moderar` (e 1 pelo `handler`): Comprehend e SSM com `Stubber` (confere `Text`, `LanguageCode`, `Name`, `WithDecryption`), OpenAI com `urlopen` falso via `monkeypatch`
+- [x] Todo teste pede as três trocas: `Stubber` ativo e vazio prova que o serviço não foi chamado; `assert_no_pending_responses` prova que foi
+- [x] `moderar` direto, não o `handler`: as exceções do `Stubber` são `BotoCoreError` e virariam 502 pelo `handler`; o único teste pelo `handler` confere `statusCode == 200` antes do corpo
+- [x] `_chave_openai` zerado com `monkeypatch` em cada teste; cache de uma leitura do SSM provado com uma resposta só no `Stubber`
+- [x] Modo 3: Comprehend recebe o original, OpenAI recebe o redigido, sinalizado devolve só `***`; `flagged` `null`, `0` e `"false"` também censuram
+- [x] Medido localmente (Python 3.14): `37 passed`; 12 mutações no `app.py` (modos trocados, ordem invertida, `is True`, sem cache, `WithDecryption`, `LanguageCode`, sem `CENSURA`, `ensure_ascii`, timeout, `Bearer`), todas reprovadas
+- [x] Medido no CI: `37 passed` no Python 3.13
 
 ### 8.3 Validação
 - [ ] Texto vazio, ausente e acima de 1.000 caracteres
