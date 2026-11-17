@@ -395,7 +395,7 @@ Marque `[x]` conforme for concluindo.
 - [x] Esperados escritos por extenso (`"***"`, `0.5`), nunca lidos do `app.py`
 - [x] Offsets com emoji fora do BMP documentados; a prova de que o Comprehend devolve code points continua sendo o teste real da 9.2
 - [x] Medido localmente (Python 3.14): `23 passed`; 8 mutações no `app.py` (`<`, `>`, sem `max`, sem `reversed`, sem `sorted`, sem filtro de tipo, sem filtro de score, sem `PASSWORD`), todas reprovadas
-- [ ] Medido no CI: `23 passed` no Python 3.13
+- [x] Medido no CI: `23 passed` no Python 3.13.18
 
 ### 8.2 Modos
 - [ ] Modo 1
