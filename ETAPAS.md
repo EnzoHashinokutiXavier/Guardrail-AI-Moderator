@@ -386,10 +386,16 @@ Marque `[x]` conforme for concluindo.
 - [x] Medido no CI: `4 passed` no Python 3.13.18, sem o `|| [ ... -eq 5 ]`
 
 ### 8.1 Substituição
-- [ ] Substituição simples de uma entidade
-- [ ] Entidades sobrepostas
-- [ ] Entidades adjacentes (sem gerar `******`)
-- [ ] Entidades fora da lista ou abaixo do score são ignoradas
+- [x] Substituição simples de uma entidade
+- [x] Entidades sobrepostas
+- [x] Entidades adjacentes (sem gerar `******`)
+- [x] Entidades fora da lista ou abaixo do score são ignoradas
+- [x] `tests/test_substituicao.py` com 19 testes de `redigir`, sem mock (função pura); casos das verificações 8 a 21 da 7.3
+- [x] Acréscimos: três entidades em cadeia, entidade ignorada colada numa censurada (filtro antes da fusão) e a lista fechada comparada item a item (não só o tamanho)
+- [x] Esperados escritos por extenso (`"***"`, `0.5`), nunca lidos do `app.py`
+- [x] Offsets com emoji fora do BMP documentados; a prova de que o Comprehend devolve code points continua sendo o teste real da 9.2
+- [x] Medido localmente (Python 3.14): `23 passed`; 8 mutações no `app.py` (`<`, `>`, sem `max`, sem `reversed`, sem `sorted`, sem filtro de tipo, sem filtro de score, sem `PASSWORD`), todas reprovadas
+- [ ] Medido no CI: `23 passed` no Python 3.13
 
 ### 8.2 Modos
 - [ ] Modo 1
