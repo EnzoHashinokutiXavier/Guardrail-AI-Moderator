@@ -423,8 +423,15 @@ Marque `[x]` conforme for concluindo.
 - [x] Medido no CI: `102 passed` no Python 3.13 (inclusive o `json_invalido[aninhado]`: `RecursionError` também no 3.13)
 
 ### 8.4 Falhas
-- [ ] Fail closed com erro do Comprehend
-- [ ] Fail closed com erro/timeout da OpenAI
+- [x] Fail closed com erro do Comprehend
+- [x] Fail closed com erro/timeout da OpenAI
+- [x] `tests/test_falhas.py` com 65 testes pelo `handler`: todo 502 confere o corpo exato e a linha de log inteira (`falha` e `codigo` esperados), para um 502 pelo motivo errado não passar
+- [x] Comprehend e SSM com `add_client_error` do `Stubber`; timeout e conexão do Comprehend levantados no evento `before-send` do cliente real, passando pelo retry do botocore (2 tentativas medidas)
+- [x] OpenAI: fila de respostas e exceções na fixture `openai` do `conftest.py` (fila vazia = comportamento da 8.2); retry só em timeout, conexão e 500/502/503/504; 4xx e resposta inválida numa tentativa só
+- [x] Erro da AWS modelado vira subclasse de `ClientError` com o nome do código (`falha` = `ParameterNotFound`, `AccessDeniedException`...); não modelado fica `ClientError`. Na Lambda (7.6), o `AccessDeniedException` do SSM saiu como `ClientError`: depende do botocore do runtime
+- [x] Modo 3: OpenAI falhando depois da redação devolve 502, nunca o redigido; falha do SSM não fica no cache; erro fora de `FALHAS` sobe sem log
+- [x] Medido localmente (Python 3.14): `167 passed`; 20 mutações no `app.py` (cada classe do `FALHAS`, `except Exception`, fail open, tentativas 1 e 3, 429 com retry, 4xx com retry, `max_attempts`, `OSError` engolido, `_codigo`, mensagem no log e no 502, sem log, cache envenenado), todas reprovadas
+- [x] Medido no CI: `167 passed` no Python 3.13
 
 ### 8.5 Kill switch
 - [ ] Teste da Lambda kill switch com mock do `PutFunctionConcurrency`
