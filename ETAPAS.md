@@ -447,10 +447,14 @@ Marque `[x]` conforme for concluindo.
 ## 9. Teste real na AWS
 
 ### 9.1 Primeiro deploy
-- [ ] Apagar log groups `guardrails-*` que sobraram de um `destroy` anterior, se houver
-- [ ] Rodar o workflow `apply`
-- [ ] Confirmar a assinatura de e-mail do SNS
-- [ ] Pegar a API key no Console
+- [x] Apagar log groups `guardrails-*` que sobraram de um `destroy` anterior, se houver
+- [x] Rodar o workflow `apply`
+- [x] Confirmar a assinatura de e-mail do SNS
+- [x] Pegar a API key no Console
+- [x] Sobras conferidas no Console antes do apply (log groups, Lambdas, roles, API, key, usage plan, tópico, alarmes, parâmetro, `.tflock`): nenhuma
+- [x] Apply do zero: `34 added`; segundo apply sem mudança (`0 added`) e `No changes` depois da confirmação do e-mail
+- [x] Stack de pé até a 9.4 (sem destroy no fim da etapa); sem `Publish` manual no tópico (a kill switch é assinante desde a 6.2)
+- [x] Key conferida sem invocar a Lambda: `{}` com key errada → 403 `{"erro":"acesso negado"}`, com a key certa → 400 do validator `{"erro":"requisição inválida"}` (sem espaço: API Gateway); a key é checada antes do Request Validator
 
 ### 9.2 Funcionalidade
 - [ ] Testar o modo 1
