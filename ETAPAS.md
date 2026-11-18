@@ -434,7 +434,13 @@ Marque `[x]` conforme for concluindo.
 - [x] Medido no CI: `167 passed` no Python 3.13
 
 ### 8.5 Kill switch
-- [ ] Teste da Lambda kill switch com mock do `PutFunctionConcurrency`
+- [x] Teste da Lambda kill switch com mock do `PutFunctionConcurrency`
+- [x] `tests/test_kill_switch.py` com 12 testes: `Stubber` num cliente Lambda real, entregue ao handler trocando o `boto3` do módulo (o cliente é criado dentro do handler, não no import)
+- [x] Zera com `ReservedConcurrentExecutions=0` no `FUNCAO_ALVO` para evento do SNS, vazio e `None` (não lê o evento); log INFO "zerada" só depois da chamada
+- [x] Toda falha sobe (5 erros da API, timeout, sem conexão, sem `FUNCAO_ALVO`): é o que conta em `Errors` e dispara o alarme do kill switch; `AccessDeniedException` sai como `ClientError` (não modelado no Lambda)
+- [x] Retry padrão do botocore 1.44.2 ("standard"): 3 tentativas medidas com o `before-send`
+- [x] Medido localmente (Python 3.14): `179 passed`; 11 mutações no `kill_switch/app.py` (try/except, concorrência 1, `environ.get`, nome fixo, sem log, log antes, nível WARNING, `logger.warning`, `DeleteFunctionConcurrency`, região fixa, `Config` de retry), todas reprovadas
+- [x] Medido no CI: `179 passed` no Python 3.13
 
 ---
 
