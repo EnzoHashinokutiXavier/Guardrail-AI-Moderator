@@ -496,7 +496,14 @@ Marque `[x]` conforme for concluindo.
 ## 10. Documentação (README)
 
 ### 10.1 Conteúdo técnico
-- [ ] Arquitetura e diagrama
+- [x] Arquitetura e diagrama
+- [x] `README.md` criado em inglês, com a seção Architecture: legenda dos passos 1–6 (requisição) e A–E (kill switch), tabela de componentes, motivo da região `us-east-1` e da Lambda sem VPC, aviso de que os campos da API seguem em português e estrutura do repositório
+- [x] 7 diagramas em `docs/diagrams/` como `.drawio.svg` (SVG com o diagrama editável embutido): visão geral, fluxo da requisição, dados por modo, kill switch, CI/CD, permissões e proteção de custo
+- [x] Ferramentas instaladas na máquina: draw.io Desktop 32.7.4 (`winget`, exporta pela linha de comando) e extensão Draw.io Integration do VS Code (edita os `.drawio.svg`)
+- [x] Exportados com fundo branco e tema claro; PNGs de fallback dos textos removidos do SVG (≈ 1 MB → 36–120 KB por arquivo), sem tocar no diagrama embutido
+- [x] Conferido no Edge headless, com o SVG dentro de `<img>` a 880 px (largura do README no GitHub): texto legível
+- [x] O README já cita, junto dos diagramas, a exceção do modo 2, o desvio do `Content-Type` e o pior caso de custo; as seções próprias de 10.2 e 10.3 continuam pendentes
+- [ ] Conferir a renderização dos diagramas no GitHub depois do push
 - [ ] Contrato da API e exemplos de `curl` dos três modos com `<API_KEY>` e `<URL>`
 - [ ] Aviso de que a API só fica no ar durante demonstrações
 
