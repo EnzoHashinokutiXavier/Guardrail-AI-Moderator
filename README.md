@@ -4,6 +4,117 @@ A serverless API on AWS that receives an **English** text and censors parts of i
 
 The infrastructure is defined in Terraform and deployed only by GitHub Actions. The stack is created for a demo and destroyed afterwards, so it costs nothing while it is down.
 
+> [!NOTE]
+> **The API is only online during demos.** This repository is the definition of the infrastructure, not a service that is always running. Outside a demo, the URL does not exist and every request fails.
+
+## Demo access
+
+A demo works like this:
+
+1. The `apply` workflow creates the stack, and the alert e-mail subscription is confirmed.
+2. The API key is copied from the AWS Console (API Gateway → API Keys → Show) and handed directly to the person trying the API. It is never published in this repository.
+3. The URL is the stage's Invoke URL (API Gateway → Stages → `v1`) followed by `/moderar`.
+4. After the demo, the `destroy` workflow removes everything. The next `apply` creates a new URL and a new key.
+
+The protections stay on during a demo. **More than 10 requests in the same clock minute trigger the kill switch**, and the API stays down until the next `apply`.
+
+## API
+
+### Request
+
+`POST <URL>`, where `<URL>` looks like `https://<api-id>.execute-api.us-east-1.amazonaws.com/v1/moderar`.
+
+| Header | Value |
+|---|---|
+| `x-api-key` | the API key handed over for the demo |
+| `Content-Type` | `application/json` |
+
+```json
+{
+  "texto": "My name is John Smith and my email is john.smith@example.com.",
+  "modo": 1
+}
+```
+
+- `texto`: required string, 1 to 1,000 characters (Unicode code points). A text made only of spaces is accepted and returned unchanged.
+- `modo`: required integer. `"1"`, `1.0` and `true` are rejected.
+  - `1`: censor personal data only
+  - `2`: censor inappropriate content only
+  - `3`: censor both, personal data first
+
+Only English is supported. A text in another language does not cause an error, but its personal data is not detected and comes back uncensored.
+
+### Response
+
+```json
+{
+  "texto_censurado": "My name is *** and my email is ***."
+}
+```
+
+Personal data is replaced span by span, keeping the rest of the text. If OpenAI flags the text as inappropriate, the whole response becomes `"***"`, even if PII had already been replaced.
+
+### Errors
+
+Every error has the same body, `{"erro": "<generic message>"}`, with a message in Portuguese. The text sent is never returned in an error.
+
+| Status | Cause | Message |
+|---|---|---|
+| `400` | Malformed JSON, `Content-Type` other than `application/json`, `texto` missing, empty or over 1,000 characters, `modo` missing, not an integer or not 1, 2 or 3 | `requisição inválida` |
+| `403` | `x-api-key` header missing or invalid | `acesso negado` |
+| `429` | Usage plan throttle (5 req/s, burst 10) or daily quota (1,000 requests) exceeded | `limite de requisições excedido` |
+| `502` | Comprehend, Parameter Store or OpenAI failed or timed out. No text is returned (fail closed) | `serviço de moderação indisponível` |
+| other `5xx` | Kill switch active, Lambda timeout or unexpected error | `serviço de moderação indisponível` |
+
+### Examples
+
+Replace `<URL>` and `<API_KEY>` with the values handed over for the demo.
+
+**Mode 1: personal data only**
+
+```bash
+curl -X POST '<URL>' \
+  -H 'x-api-key: <API_KEY>' \
+  -H 'Content-Type: application/json' \
+  -d '{"texto": "My name is John Smith and my email is john.smith@example.com.", "modo": 1}'
+```
+
+```json
+{"texto_censurado": "My name is *** and my email is ***."}
+```
+
+**Mode 2: inappropriate content only**
+
+```bash
+curl -X POST '<URL>' \
+  -H 'x-api-key: <API_KEY>' \
+  -H 'Content-Type: application/json' \
+  -d '{"texto": "I want to kill you.", "modo": 2}'
+```
+
+```json
+{"texto_censurado": "***"}
+```
+
+Mode 2 does not redact personal data: if the text is not flagged, it comes back unchanged, names and e-mails included. It also sends the original text to OpenAI.
+
+**Mode 3: both**
+
+```bash
+curl -X POST '<URL>' \
+  -H 'x-api-key: <API_KEY>' \
+  -H 'Content-Type: application/json' \
+  -d '{"texto": "My name is John Smith. I want to kill you.", "modo": 3}'
+```
+
+```json
+{"texto_censurado": "***"}
+```
+
+Without the threat, the same mode returns only the personal data censored: `"My name is John Smith."` becomes `"My name is ***."`.
+
+The examples use bash syntax (Linux, macOS, Git Bash or WSL). Windows PowerShell 5.1 strips the inner double quotes from the JSON body when it calls `curl.exe`, so run them from one of those shells.
+
 ## Architecture
 
 ![Architecture overview](docs/diagrams/architecture.drawio.svg)

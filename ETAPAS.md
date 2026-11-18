@@ -503,9 +503,13 @@ Marque `[x]` conforme for concluindo.
 - [x] Exportados com fundo branco e tema claro; PNGs de fallback dos textos removidos do SVG (≈ 1 MB → 36–120 KB por arquivo), sem tocar no diagrama embutido
 - [x] Conferido no Edge headless, com o SVG dentro de `<img>` a 880 px (largura do README no GitHub): texto legível
 - [x] O README já cita, junto dos diagramas, a exceção do modo 2, o desvio do `Content-Type` e o pior caso de custo; as seções próprias de 10.2 e 10.3 continuam pendentes
-- [ ] Conferir a renderização dos diagramas no GitHub depois do push
-- [ ] Contrato da API e exemplos de `curl` dos três modos com `<API_KEY>` e `<URL>`
-- [ ] Aviso de que a API só fica no ar durante demonstrações
+- [x] Conferir a renderização dos diagramas no GitHub depois do push
+- [x] Contrato da API e exemplos de `curl` dos três modos com `<API_KEY>` e `<URL>`
+- [x] Aviso de que a API só fica no ar durante demonstrações
+- [x] Seção API do README: request (headers, `texto`, `modo`), response, tabela de erros com as mensagens reais das Gateway Responses e da Lambda, e `curl` dos três modos com a resposta esperada
+- [x] Seção Demo access: aviso no topo, passo a passo da demo (apply, key no Console, Invoke URL do stage `v1` + `/moderar`, destroy) e o limite do kill switch durante a demo
+- [x] Exemplos em sintaxe bash; o README avisa que o PowerShell 5.1 tira as aspas internas do JSON ao chamar o `curl.exe`
+- [x] Respostas dos modos 1 e 3 iguais às confirmadas no teste real (9.2); a do modo 2 (`"I want to kill you."` → `"***"`) é a esperada, não foi repetida na API
 
 ### 10.2 Limitações e riscos
 - [ ] Só inglês
