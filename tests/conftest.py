@@ -1,4 +1,4 @@
-# Configuração comum dos testes (etapas 8.0 e 8.3). Nenhum teste fala com a AWS nem com a OpenAI.
+# Configuração comum dos testes (etapas 8.0, 8.3 e 8.4). Nenhum teste fala com a AWS nem com a OpenAI.
 import io
 import json
 import os
@@ -67,14 +67,25 @@ def ssm(monkeypatch):
 
 @pytest.fixture
 def openai(monkeypatch):
-    """Moderation falsa no lugar do urlopen. falsa.flagged decide a resposta."""
-    falsa = types.SimpleNamespace(flagged=False, requisicoes=[], timeouts=[])
+    """Moderation falsa no lugar do urlopen.
+
+    Cada tentativa consome o primeiro item de falsa.fila: exceção é levantada, bytes é o corpo
+    cru, outro valor é o JSON da resposta. Fila vazia: {"results": [{"flagged": falsa.flagged}]}.
+    """
+    falsa = types.SimpleNamespace(flagged=False, fila=[], requisicoes=[], timeouts=[])
 
     def urlopen(requisicao, timeout):
         falsa.requisicoes.append(requisicao)
         falsa.timeouts.append(timeout)
-        corpo = {"results": [{"flagged": falsa.flagged}]}
-        return io.BytesIO(json.dumps(corpo).encode("utf-8"))
+        if not falsa.fila:
+            corpo = {"results": [{"flagged": falsa.flagged}]}
+            return io.BytesIO(json.dumps(corpo).encode("utf-8"))
+        item = falsa.fila.pop(0)
+        if isinstance(item, BaseException):
+            raise item
+        if isinstance(item, bytes):
+            return io.BytesIO(item)
+        return io.BytesIO(json.dumps(item).encode("utf-8"))
 
     monkeypatch.setattr(urllib.request, "urlopen", urlopen)
     return falsa
