@@ -457,23 +457,39 @@ Marque `[x]` conforme for concluindo.
 - [x] Key conferida sem invocar a Lambda: `{}` com key errada → 403 `{"erro":"acesso negado"}`, com a key certa → 400 do validator `{"erro":"requisição inválida"}` (sem espaço: API Gateway); a key é checada antes do Request Validator
 
 ### 9.2 Funcionalidade
-- [ ] Testar o modo 1
-- [ ] Testar o modo 2
-- [ ] Testar o modo 3
-- [ ] Testar offsets com acento e emoji antes da PII (`"Café ☕ — my name is John Smith"`)
-- [ ] Testar os erros 400, 403 e 429 no formato `{"erro": ...}`
-- [ ] Testar `Content-Type` diferente de `application/json` e documentar o resultado
+- [x] Testar o modo 1
+- [x] Testar o modo 2
+- [x] Testar o modo 3
+- [x] Testar offsets com acento e emoji antes da PII (`"Café ☕ — my name is John Smith"`)
+- [x] Testar os erros 400, 403 e 429 no formato `{"erro": ...}`
+- [x] Testar `Content-Type` diferente de `application/json` e documentar o resultado
+- [x] Testes em blocos de no máximo 7 chamadas à Lambda por minuto do relógio; o kill switch não disparou (alarme em OK do apply da 9.1 até a rajada da 9.3)
+- [x] Modos 1, 2 e 3 com 200, iguais byte a byte ao esperado; `"Café ☕ — ..."` e `"😀 my name is John Smith"` com `***` no lugar exato (offsets em code points pela API); telefone e e-mail no mesmo texto, os dois censurados
+- [x] 1.000 `é` e 1.000 `😀` → 200; 1.001 `😀` → 400 do validator: o validator conta code points, não bytes nem unidades UTF-16
+- [x] 400 do validator (12 casos) e 403 (5 casos) sem espaço, sem invocar a Lambda
+- [x] 429 não observado: 3 rajadas de 60 com corpo inválido (~45 req/s) deram 180 × 400; throttle best-effort. Formato do 429 garantido pelas Gateway Responses `THROTTLED`/`QUOTA_EXCEEDED` do `api_gateway.tf` (apply sem mudança)
+- [x] Content-Type: `text/plain` e `x-www-form-urlencoded` → 400 da Lambda (contam no kill switch); `charset=utf-8` → 200; `Application/JSON` validado pelo API Gateway (casa sem diferenciar maiúsculas)
 
 ### 9.3 Kill switch
-- [ ] Logo após a virada de um minuto, mandar ~25 requisições em sequência
-- [ ] Confirmar a concorrência da Lambda principal em 0
-- [ ] Confirmar o e-mail de aviso recebido
-- [ ] Rodar o `apply` e confirmar que a stack voltou
+- [x] Logo após a virada de um minuto, mandar ~25 requisições em sequência
+- [x] Confirmar a concorrência da Lambda principal em 0
+- [x] Confirmar o e-mail de aviso recebido
+- [x] Rodar o `apply` e confirmar que a stack voltou
+- [x] 25 chamadas de modo 1 em ~15 s, todas 200; ponto de 26 invocações no minuto (25 + 1 de espera)
+- [x] Alarme em ALARM ~89 s depois do fim da rajada; API recusando ≤ 15 s depois do alarme com `[500] {"erro":"serviço de moderação indisponível"}` (API Gateway, `DEFAULT_5XX`)
+- [x] E-mail "ALARM: guardrails-moderador-invocacoes" recebido (traz Account ID: sem print público); alarme de `Errors` continuou OK; alarme de volta a OK em ~1 min
+- [x] Religar: `Plan: 0 to add, 2 to change`, `1 changed`; mesma URL e mesma key (controle → 200); apply seguinte `No changes`
 
 ### 9.4 Encerramento do teste
-- [ ] Conferir nos logs que não há texto nem PII
-- [ ] Rodar o workflow `destroy`
-- [ ] Conferir no Console que os recursos foram removidos
+- [x] Conferir nos logs que não há texto nem PII
+- [x] Rodar o workflow `destroy`
+- [x] Conferir no Console que os recursos foram removidos
+- [x] Logs Insights antes do destroy: 49 linhas JSON de metadados na principal (200/1 41, 200/2 2, 200/3 3, 400 3, 502 0), batendo com as chamadas da 9.2 e da 9.3; nenhuma linha fora de START/END/REPORT/INIT_START e do `_logar`; nenhuma ocorrência dos textos dos testes (nome, ameaça, "Café", telefone, e-mail, `aaaa`, `éé`)
+- [x] Kill switch só com "Found credentials" e "concorrência de guardrails-moderador zerada" (~3 s depois do alarme), sem traceback
+- [x] Sem log group do API Gateway (sem execution/access log); retenção de 14 dias nos dois log groups
+- [x] Destroy: `34 destroyed`, log sem o plano e sem o valor da key
+- [x] Sobras conferidas depois do destroy: nenhuma; state vazio no S3, sem `.tflock`; bootstrap intacto
+- [x] API depois do destroy: host deixa de resolver no DNS logo em seguida (curl `[000]`, exit 6)
 
 ---
 
