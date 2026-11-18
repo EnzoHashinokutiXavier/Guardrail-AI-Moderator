@@ -49,3 +49,4 @@ anotações/
 
 # --- Claude Code (config local) ---
 .claude/settings.local.json
+.claude/
