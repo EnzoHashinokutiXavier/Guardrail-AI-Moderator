@@ -539,8 +539,12 @@ Marque `[x]` conforme for concluindo.
 - [x] README, PROJETO.md e os diagramas `architecture`, `request-flow`, `data-flow`, `kill-switch` e `permissions` atualizados (troca no XML embutido e no SVG renderizado, sem reexportar; conferido no Edge headless); o histórico do ETAPAS fica com os nomes antigos
 - [x] Medido localmente (Python 3.14): `180 passed` (179 + 1 teste que recusa os nomes antigos); 4 mutações devolvendo os nomes antigos (`texto` na leitura, `texto_censurado`, `erro`, `tamanho`), todas reprovadas
 - [x] `terraform fmt -check` e `terraform validate` sem erro (Terraform 1.11.4)
-- [ ] Medido no CI: workflow `test` na `main`
-- [ ] Teste real: apply, os três modos, 400/403 do API Gateway, rota e campos antigos, `text/plain` → 400 da Lambda, log com os campos novos, destroy
+- [x] Medido no CI: `180 passed` no Python 3.13
+- [x] Teste real: apply (`34 added`), os três modos, 400/403 do API Gateway, rota e campos antigos, `text/plain` → 400 da Lambda
+- [x] Medido pela API (11 chamadas em ~11 s, 6 na Lambda): modo 1 PII → `"My name is *** and my email is ***."`; modo 2 `"I want to kill you."` → `"***"` (agora repetido na API, ver 10.1); modo 3 nome + ameaça → `"***"` e só nome → `"My name is ***."`; key errada e rota antiga `/moderar` → 403 `{"error":"access denied"}`; campos antigos, `text` vazio e `mode` `"1"` → 400 `{"error":"invalid request"}` do validator (sem espaço); `text/plain` → 400 `{"error": "invalid request"}` da Lambda (com espaço); `charset=utf-8` → 200
+- [x] Log no CloudWatch com os campos novos (`mode`, `length`), sem texto
+- [x] Logs Insights: 6 linhas, uma por chamada na Lambda (200/1, 200/2, 200/3, 200/3, 400, 200/1); `length` 61, 19, 42, 22 e 2 bate com os textos enviados; no 400, `mode` e `length` `null`; 1.685 ms no modo 2 (primeira leitura do SSM e primeira conexão com a OpenAI no container), 428 ms no modo 3 com a chave já em cache
+- [x] Destroy
 
 ### 10.3 Custos, segurança e licença
 - [ ] Pior caso de custo
