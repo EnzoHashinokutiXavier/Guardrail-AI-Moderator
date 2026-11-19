@@ -69,7 +69,7 @@ resource "aws_lambda_function" "kill_switch" {
 
   environment {
     variables = {
-      FUNCAO_ALVO = aws_lambda_function.moderador.function_name
+      TARGET_FUNCTION = aws_lambda_function.moderador.function_name
     }
   }
 }

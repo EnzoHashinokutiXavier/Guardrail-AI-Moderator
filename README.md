@@ -13,7 +13,7 @@ A demo works like this:
 
 1. The `apply` workflow creates the stack, and the alert e-mail subscription is confirmed.
 2. The API key is copied from the AWS Console (API Gateway → API Keys → Show) and handed directly to the person trying the API. It is never published in this repository.
-3. The URL is the stage's Invoke URL (API Gateway → Stages → `v1`) followed by `/moderar`.
+3. The URL is the stage's Invoke URL (API Gateway → Stages → `v1`) followed by `/moderate`.
 4. After the demo, the `destroy` workflow removes everything. The next `apply` creates a new URL and a new key.
 
 The protections stay on during a demo. **More than 10 requests in the same clock minute trigger the kill switch**, and the API stays down until the next `apply`.
@@ -22,7 +22,7 @@ The protections stay on during a demo. **More than 10 requests in the same clock
 
 ### Request
 
-`POST <URL>`, where `<URL>` looks like `https://<api-id>.execute-api.us-east-1.amazonaws.com/v1/moderar`.
+`POST <URL>`, where `<URL>` looks like `https://<api-id>.execute-api.us-east-1.amazonaws.com/v1/moderate`.
 
 | Header | Value |
 |---|---|
@@ -31,13 +31,13 @@ The protections stay on during a demo. **More than 10 requests in the same clock
 
 ```json
 {
-  "texto": "My name is John Smith and my email is john.smith@example.com.",
-  "modo": 1
+  "text": "My name is John Smith and my email is john.smith@example.com.",
+  "mode": 1
 }
 ```
 
-- `texto`: required string, 1 to 1,000 characters (Unicode code points). A text made only of spaces is accepted and returned unchanged.
-- `modo`: required integer. `"1"`, `1.0` and `true` are rejected.
+- `text`: required string, 1 to 1,000 characters (Unicode code points). A text made only of spaces is accepted and returned unchanged.
+- `mode`: required integer. `"1"`, `1.0` and `true` are rejected.
   - `1`: censor personal data only
   - `2`: censor inappropriate content only
   - `3`: censor both, personal data first
@@ -48,7 +48,7 @@ Only English is supported. A text in another language does not cause an error, b
 
 ```json
 {
-  "texto_censurado": "My name is *** and my email is ***."
+  "censored_text": "My name is *** and my email is ***."
 }
 ```
 
@@ -56,15 +56,15 @@ Personal data is replaced span by span, keeping the rest of the text. If OpenAI 
 
 ### Errors
 
-Every error has the same body, `{"erro": "<generic message>"}`, with a message in Portuguese. The text sent is never returned in an error.
+Every error has the same body, `{"error": "<generic message>"}`. The text sent is never returned in an error.
 
 | Status | Cause | Message |
 |---|---|---|
-| `400` | Malformed JSON, `Content-Type` other than `application/json`, `texto` missing, empty or over 1,000 characters, `modo` missing, not an integer or not 1, 2 or 3 | `requisição inválida` |
-| `403` | `x-api-key` header missing or invalid | `acesso negado` |
-| `429` | Usage plan throttle (5 req/s, burst 10) or daily quota (1,000 requests) exceeded | `limite de requisições excedido` |
-| `502` | Comprehend, Parameter Store or OpenAI failed or timed out. No text is returned (fail closed) | `serviço de moderação indisponível` |
-| other `5xx` | Kill switch active, Lambda timeout or unexpected error | `serviço de moderação indisponível` |
+| `400` | Malformed JSON, `Content-Type` other than `application/json`, `text` missing, empty or over 1,000 characters, `mode` missing, not an integer or not 1, 2 or 3 | `invalid request` |
+| `403` | `x-api-key` header missing or invalid | `access denied` |
+| `429` | Usage plan throttle (5 req/s, burst 10) or daily quota (1,000 requests) exceeded | `too many requests` |
+| `502` | Comprehend, Parameter Store or OpenAI failed or timed out. No text is returned (fail closed) | `moderation service unavailable` |
+| other `5xx` | Kill switch active, Lambda timeout or unexpected error | `moderation service unavailable` |
 
 ### Examples
 
@@ -76,11 +76,11 @@ Replace `<URL>` and `<API_KEY>` with the values handed over for the demo.
 curl -X POST '<URL>' \
   -H 'x-api-key: <API_KEY>' \
   -H 'Content-Type: application/json' \
-  -d '{"texto": "My name is John Smith and my email is john.smith@example.com.", "modo": 1}'
+  -d '{"text": "My name is John Smith and my email is john.smith@example.com.", "mode": 1}'
 ```
 
 ```json
-{"texto_censurado": "My name is *** and my email is ***."}
+{"censored_text": "My name is *** and my email is ***."}
 ```
 
 **Mode 2: inappropriate content only**
@@ -89,11 +89,11 @@ curl -X POST '<URL>' \
 curl -X POST '<URL>' \
   -H 'x-api-key: <API_KEY>' \
   -H 'Content-Type: application/json' \
-  -d '{"texto": "I want to kill you.", "modo": 2}'
+  -d '{"text": "I want to kill you.", "mode": 2}'
 ```
 
 ```json
-{"texto_censurado": "***"}
+{"censored_text": "***"}
 ```
 
 Mode 2 does not redact personal data: if the text is not flagged, it comes back unchanged, names and e-mails included. It also sends the original text to OpenAI (see [Mode 2 sends the original text to OpenAI](#mode-2-sends-the-original-text-to-openai)).
@@ -104,11 +104,11 @@ Mode 2 does not redact personal data: if the text is not flagged, it comes back 
 curl -X POST '<URL>' \
   -H 'x-api-key: <API_KEY>' \
   -H 'Content-Type: application/json' \
-  -d '{"texto": "My name is John Smith. I want to kill you.", "modo": 3}'
+  -d '{"text": "My name is John Smith. I want to kill you.", "mode": 3}'
 ```
 
 ```json
-{"texto_censurado": "***"}
+{"censored_text": "***"}
 ```
 
 Without the threat, the same mode returns only the personal data censored: `"My name is John Smith."` becomes `"My name is ***."`.
@@ -121,7 +121,7 @@ The examples use bash syntax (Linux, macOS, Git Bash or WSL). Windows PowerShell
 
 **Request path** (dark numbered arrows)
 
-1. The client sends `POST /v1/moderar` with the `x-api-key` header and a JSON body.
+1. The client sends `POST /v1/moderate` with the `x-api-key` header and a JSON body.
 2. API Gateway checks the key, the throttle, the daily quota and the JSON schema. Only valid requests invoke the Lambda.
 3. In modes 1 and 3, Comprehend detects PII and each detected span is replaced with `***`.
 4. In modes 2 and 3, the OpenAI key is read from Parameter Store once per Lambda container and cached in memory.
@@ -140,7 +140,7 @@ Nothing turns the API back on automatically. Only a manual run of the `apply` wo
 
 | Component | Resource | Role |
 |---|---|---|
-| API Gateway (REST, regional) | `POST /v1/moderar`, stage `v1` | API key, usage plan (5 req/s, burst 10, 1,000 req/day), JSON-schema validator, uniform `{"erro": …}` error bodies |
+| API Gateway (REST, regional) | `POST /v1/moderate`, stage `v1` | API key, usage plan (5 req/s, burst 10, 1,000 req/day), JSON-schema validator, uniform `{"error": …}` error bodies |
 | AWS Lambda | `guardrails-moderador` | Python 3.13, arm64, 256 MB, 15 s timeout, no VPC, no third-party packages |
 | Amazon Comprehend | `DetectPiiEntities` | Detects personal data (English only) |
 | OpenAI Moderation API | `omni-moderation-latest` | Detects inappropriate content (third party, outside AWS) |
@@ -149,8 +149,6 @@ Nothing turns the API back on automatically. Only a manual run of the `apply` wo
 | CloudWatch alarms, SNS, Lambda | `guardrails-alertas`, `guardrails-kill-switch` | Kill switch and alert e-mails |
 
 The stack runs in `us-east-1` because Comprehend is not available in São Paulo (`sa-east-1`). The Lambda has no VPC, so it needs no NAT Gateway, which would cost about US$ 32 a month just to exist.
-
-The API contract keeps its original Portuguese field names: `texto` and `modo` in the request, `texto_censurado` in the response and `erro` in errors.
 
 ### Request flow
 
@@ -263,7 +261,7 @@ If more people get write access to `main`, the next step is a permissions bounda
 
 API Gateway's request validator chooses the JSON schema by the request's `Content-Type`. The real test on AWS confirmed that a body sent as `text/plain` or `application/x-www-form-urlencoded` passes API Gateway without validation and invokes the Lambda. Bodies sent as `application/json`, with any casing and with parameters such as `; charset=utf-8`, are validated normally.
 
-The Lambda checks the header itself and answers `400` (`requisição inválida`) without calling Comprehend, Parameter Store or OpenAI, so no text is processed. The request is still a Lambda invocation: it costs a Lambda call and **counts toward the kill switch**. This deviation is accepted, because the kill switch already treats more than 10 invocations a minute as abuse, valid or not.
+The Lambda checks the header itself and answers `400` (`invalid request`) without calling Comprehend, Parameter Store or OpenAI, so no text is processed. The request is still a Lambda invocation: it costs a Lambda call and **counts toward the kill switch**. This deviation is accepted, because the kill switch already treats more than 10 invocations a minute as abuse, valid or not.
 
 ## Repository layout
 

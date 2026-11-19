@@ -14,28 +14,28 @@ from kill_switch import app as kill_switch
 from moderador import app
 
 
-def test_importa_as_duas_lambdas():
+def test_imports_both_lambdas():
     assert callable(app.handler)
     assert callable(kill_switch.handler)
 
 
-def test_clientes_na_regiao_do_projeto():
+def test_clients_in_project_region():
     assert app._comprehend.meta.region_name == "us-east-1"
     assert app._ssm.meta.region_name == "us-east-1"
 
 
-def test_erros_reais_do_botocore_viram_502():
+def test_real_botocore_errors_become_502():
     # Fecha o "NÃO validado" da 7.6: a hierarquia real do botocore.
-    for classe in (ConnectTimeoutError, ReadTimeoutError, EndpointConnectionError):
-        assert issubclass(classe, BotoCoreError)
-        assert issubclass(classe, app.FALHAS)
+    for cls in (ConnectTimeoutError, ReadTimeoutError, EndpointConnectionError):
+        assert issubclass(cls, BotoCoreError)
+        assert issubclass(cls, app.FAILURES)
     assert not issubclass(ClientError, BotoCoreError)
-    assert issubclass(ClientError, app.FALHAS)
+    assert issubclass(ClientError, app.FAILURES)
 
 
-def test_rede_bloqueada(sem_rede):
+def test_network_blocked(no_network):
     with pytest.raises(RuntimeError):
-        urllib.request.urlopen(app.URL_OPENAI, timeout=1)
-    assert sem_rede == ["getaddrinfo"]
-    # A tentativa foi de propósito: limpa para o sem_rede não reprovar este teste.
-    sem_rede.clear()
+        urllib.request.urlopen(app.OPENAI_URL, timeout=1)
+    assert no_network == ["getaddrinfo"]
+    # A tentativa foi de propósito: limpa para o no_network não reprovar este teste.
+    no_network.clear()

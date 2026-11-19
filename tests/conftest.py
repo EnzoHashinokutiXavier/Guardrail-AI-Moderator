@@ -17,35 +17,35 @@ os.environ.update({
     "AWS_ACCESS_KEY_ID": "testing",
     "AWS_SECRET_ACCESS_KEY": "testing",
     "AWS_EC2_METADATA_DISABLED": "true",
-    "PARAMETRO_OPENAI": "guardrails-openai-api-key",
+    "OPENAI_KEY_PARAMETER": "guardrails-openai-api-key",
 })
-for nome in ("AWS_PROFILE", "AWS_SESSION_TOKEN"):
-    os.environ.pop(nome, None)
+for name in ("AWS_PROFILE", "AWS_SESSION_TOKEN"):
+    os.environ.pop(name, None)
 
 # Só depois do os.environ acima: o import cria os clientes boto3.
 from moderador import app
 
 
-class RedeBloqueada(RuntimeError):
+class NetworkBlocked(RuntimeError):
     """Um teste tentou abrir uma conexão de rede."""
 
 
 @pytest.fixture(autouse=True)
-def sem_rede(monkeypatch):
+def no_network(monkeypatch):
     """Bloqueia DNS e conexão em todo teste. Tentativa de rede reprova o teste no fim."""
-    tentativas = []
+    attempts = []
 
-    def bloqueio(nome):
-        def bloqueado(*args, **kwargs):
-            tentativas.append(nome)
-            raise RedeBloqueada(nome)
-        return bloqueado
+    def block(name):
+        def blocked(*args, **kwargs):
+            attempts.append(name)
+            raise NetworkBlocked(name)
+        return blocked
 
-    monkeypatch.setattr(socket, "getaddrinfo", bloqueio("getaddrinfo"))
-    monkeypatch.setattr(socket.socket, "connect", bloqueio("connect"))
-    yield tentativas
-    if tentativas:
-        pytest.fail("o teste tentou acessar a rede: " + ", ".join(tentativas), pytrace=False)
+    monkeypatch.setattr(socket, "getaddrinfo", block("getaddrinfo"))
+    monkeypatch.setattr(socket.socket, "connect", block("connect"))
+    yield attempts
+    if attempts:
+        pytest.fail("the test tried to access the network: " + ", ".join(attempts), pytrace=False)
 
 
 @pytest.fixture
@@ -59,7 +59,7 @@ def comprehend():
 @pytest.fixture
 def ssm(monkeypatch):
     """Stubber no cliente do SSM, com o cache da chave zerado (e restaurado no fim)."""
-    monkeypatch.setattr(app, "_chave_openai", None)
+    monkeypatch.setattr(app, "_openai_key", None)
     with Stubber(app._ssm) as stubber:
         yield stubber
         stubber.assert_no_pending_responses()
@@ -69,18 +69,18 @@ def ssm(monkeypatch):
 def openai(monkeypatch):
     """Moderation falsa no lugar do urlopen.
 
-    Cada tentativa consome o primeiro item de falsa.fila: exceção é levantada, bytes é o corpo
-    cru, outro valor é o JSON da resposta. Fila vazia: {"results": [{"flagged": falsa.flagged}]}.
+    Cada tentativa consome o primeiro item de fake.queue: exceção é levantada, bytes é o corpo
+    cru, outro valor é o JSON da resposta. Fila vazia: {"results": [{"flagged": fake.flagged}]}.
     """
-    falsa = types.SimpleNamespace(flagged=False, fila=[], requisicoes=[], timeouts=[])
+    fake = types.SimpleNamespace(flagged=False, queue=[], requests=[], timeouts=[])
 
-    def urlopen(requisicao, timeout):
-        falsa.requisicoes.append(requisicao)
-        falsa.timeouts.append(timeout)
-        if not falsa.fila:
-            corpo = {"results": [{"flagged": falsa.flagged}]}
-            return io.BytesIO(json.dumps(corpo).encode("utf-8"))
-        item = falsa.fila.pop(0)
+    def urlopen(request, timeout):
+        fake.requests.append(request)
+        fake.timeouts.append(timeout)
+        if not fake.queue:
+            body = {"results": [{"flagged": fake.flagged}]}
+            return io.BytesIO(json.dumps(body).encode("utf-8"))
+        item = fake.queue.pop(0)
         if isinstance(item, BaseException):
             raise item
         if isinstance(item, bytes):
@@ -88,4 +88,4 @@ def openai(monkeypatch):
         return io.BytesIO(json.dumps(item).encode("utf-8"))
 
     monkeypatch.setattr(urllib.request, "urlopen", urlopen)
-    return falsa
+    return fake

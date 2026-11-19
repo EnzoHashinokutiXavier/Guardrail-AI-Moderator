@@ -76,7 +76,7 @@ resource "aws_lambda_function" "moderador" {
 
   environment {
     variables = {
-      PARAMETRO_OPENAI = aws_ssm_parameter.openai_api_key.name
+      OPENAI_KEY_PARAMETER = aws_ssm_parameter.openai_api_key.name
     }
   }
 }

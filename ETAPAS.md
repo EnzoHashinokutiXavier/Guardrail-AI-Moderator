@@ -528,6 +528,20 @@ Marque `[x]` conforme for concluindo.
 - [x] `Content-Type`: desvio confirmado na 5.4, 7.1 e 9.2 (`text/plain` e `x-www-form-urlencoded` chegam à Lambda e voltam 400 dela; `charset=utf-8` e `Application/JSON` validados pelo API Gateway); conta no kill switch, aceito
 - [x] Links internos da seção API para a nova seção (só inglês e modo 2)
 
+### 10.2.1 Contrato da API e código em inglês
+- [x] Rota `/v1/moderar` → `/v1/moderate`; campos `texto`/`modo`/`texto_censurado`/`erro` → `text`/`mode`/`censored_text`/`error`
+- [x] Mensagens de erro: `invalid request` (400), `access denied` (403), `too many requests` (429), `request rejected` (`DEFAULT_4XX`), `moderation service unavailable` (502 e 5xx)
+- [x] Campos do log: `mode`, `length`, `failure`, `code` (`status` e `ms` iguais)
+- [x] Identificadores do Python em inglês nas duas Lambdas e nos testes (constantes, funções, variáveis, nomes de teste e ids do `pytest.param`); comentários e docstrings continuam em português
+- [x] Variáveis de ambiente `PARAMETRO_OPENAI` → `OPENAI_KEY_PARAMETER` e `FUNCAO_ALVO` → `TARGET_FUNCTION`; log do kill switch `kill switch: concurrency of <função> set to 0`
+- [x] Arquivos de teste renomeados: `test_environment`, `test_redaction`, `test_modes`, `test_validation`, `test_failures` (`test_kill_switch` igual)
+- [x] Modelo do API Gateway `ModerarRequest` → `ModerateRequest`; nomes dos recursos na AWS (`guardrails-moderador` etc.), labels do Terraform, descriptions e pastas `src/moderador` sem mudança
+- [x] README, PROJETO.md e os diagramas `architecture`, `request-flow`, `data-flow`, `kill-switch` e `permissions` atualizados (troca no XML embutido e no SVG renderizado, sem reexportar; conferido no Edge headless); o histórico do ETAPAS fica com os nomes antigos
+- [x] Medido localmente (Python 3.14): `180 passed` (179 + 1 teste que recusa os nomes antigos); 4 mutações devolvendo os nomes antigos (`texto` na leitura, `texto_censurado`, `erro`, `tamanho`), todas reprovadas
+- [x] `terraform fmt -check` e `terraform validate` sem erro (Terraform 1.11.4)
+- [ ] Medido no CI: workflow `test` na `main`
+- [ ] Teste real: apply, os três modos, 400/403 do API Gateway, rota e campos antigos, `text/plain` → 400 da Lambda, log com os campos novos, destroy
+
 ### 10.3 Custos, segurança e licença
 - [ ] Pior caso de custo
 - [ ] Tabela de ameaças e mitigações

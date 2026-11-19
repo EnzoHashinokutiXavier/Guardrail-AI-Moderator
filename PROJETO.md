@@ -61,19 +61,21 @@ Em vez de manter uma lista própria de chaves de acesso, usar **API Gateway API 
 
 ## Contrato da API
 
-Rota: `POST /v1/moderar` (`https://<id>.execute-api.us-east-1.amazonaws.com/v1/moderar`).
+Rota: `POST /v1/moderate` (`https://<id>.execute-api.us-east-1.amazonaws.com/v1/moderate`).
+
+**Contrato em inglês:** rota, campos (`text`, `mode`, `censored_text`, `error`) e mensagens de erro ficam em inglês, como o texto aceito e o README. A primeira versão usava nomes em português (`/v1/moderar`, `texto`, `modo`, `texto_censurado`, `erro`); a troca foi feita na etapa 10.2.1, e os nomes antigos passaram a dar 400.
 
 ### Request
 
 ```json
 {
-  "texto": "My name is John Smith and my email is john.smith@example.com.",
-  "modo": 1
+  "text": "My name is John Smith and my email is john.smith@example.com.",
+  "mode": 1
 }
 ```
 
-- `texto`: obrigatório, string de **1 a 1.000 caracteres**. Texto vazio é rejeitado com 400, porque o `DetectPiiEntities` não aceita texto vazio e, pela regra de fail closed, o erro dele viraria 5xx. Texto só com espaços é aceito e devolvido como está, já que não há o que censurar. **Confirmado no teste real:** o Comprehend e a OpenAI Moderation aceitam texto só com espaços, e no modo 3 ele volta igual.
-- `modo`: obrigatório, **inteiro** (`"1"` ou `1.0` são rejeitados):
+- `text`: obrigatório, string de **1 a 1.000 caracteres**. Texto vazio é rejeitado com 400, porque o `DetectPiiEntities` não aceita texto vazio e, pela regra de fail closed, o erro dele viraria 5xx. Texto só com espaços é aceito e devolvido como está, já que não há o que censurar. **Confirmado no teste real:** o Comprehend e a OpenAI Moderation aceitam texto só com espaços, e no modo 3 ele volta igual.
+- `mode`: obrigatório, **inteiro** (`"1"` ou `1.0` são rejeitados):
   - `1` → censurar apenas informações pessoais
   - `2` → censurar apenas conteúdo inapropriado
   - `3` → censurar informações pessoais e conteúdo inapropriado
@@ -84,26 +86,26 @@ A autenticação não vai no corpo do JSON — é feita pelo header `x-api-key` 
 
 ### Response
 
-Exemplo com `modo: 1` (apenas PII) — a substituição é feita entidade por entidade, preservando o resto do texto:
+Exemplo com `mode: 1` (apenas PII) — a substituição é feita entidade por entidade, preservando o resto do texto:
 
 ```json
 {
-  "texto_censurado": "My name is *** and my email is ***."
+  "censored_text": "My name is *** and my email is ***."
 }
 ```
 
-Exemplo com `modo: 3` e conteúdo sinalizado como impróprio pela OpenAI Moderation — pela regra do "Caso 2" (ver "Lógica de moderação"), o texto inteiro é substituído, independente de quantas entidades de PII haviam sido identificadas antes:
+Exemplo com `mode: 3` e conteúdo sinalizado como impróprio pela OpenAI Moderation — pela regra do "Caso 2" (ver "Lógica de moderação"), o texto inteiro é substituído, independente de quantas entidades de PII haviam sido identificadas antes:
 
 ```json
 {
-  "texto": "My name is John Smith. I want to kill you.",
-  "modo": 3
+  "text": "My name is John Smith. I want to kill you.",
+  "mode": 3
 }
 ```
 
 ```json
 {
-  "texto_censurado": "***"
+  "censored_text": "***"
 }
 ```
 
@@ -111,7 +113,7 @@ Exemplo com `modo: 3` e conteúdo sinalizado como impróprio pela OpenAI Moderat
 
 | Status | Causa |
 |---|---|
-| `400` | Body inválido: JSON malformado, `Content-Type` diferente de `application/json`, `texto` ausente, vazio ou acima de 1.000 caracteres, `modo` ausente, não inteiro ou diferente de 1, 2 ou 3 |
+| `400` | Body inválido: JSON malformado, `Content-Type` diferente de `application/json`, `text` ausente, vazio ou acima de 1.000 caracteres, `mode` ausente, não inteiro ou diferente de 1, 2 ou 3 |
 | `403` | Header `x-api-key` ausente ou com key inválida |
 | `429` | Throttle ou quota do Usage Plan excedidos |
 | `502` | Falha ou timeout de um serviço de moderação, devolvido pela própria Lambda (fail closed, ver "Tratamento de falhas") |
@@ -121,11 +123,11 @@ Corpo de erro, sempre no mesmo formato:
 
 ```json
 {
-  "erro": "mensagem genérica"
+  "error": "mensagem genérica"
 }
 ```
 
-- A Lambda devolve esse formato nos 400 e 502 dela. A mensagem é genérica (por exemplo, `"requisição inválida"`, `"serviço de moderação indisponível"`) e nunca inclui detalhe interno, stack trace ou trecho do texto.
+- A Lambda devolve esse formato nos 400 e 502 dela. A mensagem é genérica (por exemplo, `"invalid request"`, `"moderation service unavailable"`) e nunca inclui detalhe interno, stack trace ou trecho do texto.
 - Os erros gerados pelo API Gateway (400 do validator, 403, 429 e 5xx) usam **Gateway Responses** customizadas, sem custo, para seguir o mesmo formato.
 
 Em nenhum caso de erro o texto é devolvido.
@@ -161,7 +163,7 @@ Em nenhum caso de erro o texto é devolvido.
 ### Tratamento de falhas
 
 - Se Comprehend ou OpenAI Moderation falharem/timeout, a resposta deve ser um erro (`502`, ver "Respostas de erro") — **nunca** devolver o texto sem a censura correspondente (fail closed). Um serviço de moderação que falha e libera texto sem censurar é pior do que um serviço que fica indisponível.
-  - A falha do SSM ao ler a chave da OpenAI também vira `502`: sem a chave não há Moderation. **Confirmado no teste real:** com a variável `PARAMETRO_OPENAI` apontando para um parâmetro fora da policy, os modos 2 e 3 devolvem 502 da Lambda (no modo 3, nem o texto já redigido volta) e o modo 1 continua com 200.
+  - A falha do SSM ao ler a chave da OpenAI também vira `502`: sem a chave não há Moderation. **Confirmado no teste real:** com a variável `OPENAI_KEY_PARAMETER` apontando para um parâmetro fora da policy, os modos 2 e 3 devolvem 502 da Lambda (no modo 3, nem o texto já redigido volta) e o modo 1 continua com 200.
   - O `502` cobre uma lista fechada de erros (os do boto3/botocore, de rede/HTTP e de resposta em formato inesperado). Erro fora dessa lista é defeito de código: sobe sem tratamento e vira 5xx do API Gateway, o que continua sendo fail closed.
 - **Timeouts:**
   - Comprehend e SSM (boto3): `connect_timeout=1`, `read_timeout=3`, `retries={"total_max_attempts": 2, "mode": "standard"}` (2 tentativas: 1 chamada + 1 retry). No `Config` do boto3, `max_attempts` conta só os retries: `"max_attempts": 2` seriam 3 tentativas.
@@ -184,16 +186,16 @@ Em nenhum caso de erro o texto é devolvido.
   - Role da Lambda kill switch: `lambda:PutFunctionConcurrency` no ARN da função principal.
   - As duas roles também têm `logs:CreateLogStream` e `logs:PutLogEvents`, restritos ao ARN do log group da própria função. Sem isso, nenhuma Lambda grava log. `logs:CreateLogGroup` não entra, porque o log group é criado pelo Terraform.
   - Não é preciso `kms:Decrypt`: a chave gerenciada `alias/aws/ssm` já permite a descriptografia via SSM para quem tem `ssm:GetParameter`.
-- Validar `texto` e `modo` antes de chamar serviços externos.
+- Validar `text` e `mode` antes de chamar serviços externos.
   - Fazer essa validação também via **Request Validator do API Gateway** (schema JSON), sem custo adicional — rejeita requisição malformada antes de invocar a Lambda, reduzindo custo e superfície de ataque. A Lambda repete a validação como defesa em profundidade.
-  - Schema: `texto` com `"type": "string"`, `minLength: 1` e `maxLength: 1000`; `modo` com `"type": "integer"` e `"enum": [1, 2, 3]`; os dois em `required`.
-  - Na Lambda, conferir o tipo com `type(modo) is int`, e não só `modo in (1, 2, 3)`: em Python, `True in (1, 2, 3)` é verdadeiro.
+  - Schema: `text` com `"type": "string"`, `minLength: 1` e `maxLength: 1000`; `mode` com `"type": "integer"` e `"enum": [1, 2, 3]`; os dois em `required`.
+  - Na Lambda, conferir o tipo com `type(mode) is int`, e não só `mode in (1, 2, 3)`: em Python, `True in (1, 2, 3)` é verdadeiro.
   - **`Content-Type`:** o Request Validator escolhe o modelo pelo `Content-Type` da requisição. **Confirmado no teste real:** `text/plain` passa pelo validator sem validar o body e invoca a Lambda, enquanto `application/json; charset=utf-8` é validado normalmente. A Lambda rejeita o `Content-Type` errado com 400 (ela confere o header; **confirmado no teste real** com a validação da etapa 7.1), mas essa requisição já foi uma invocação e conta para o kill switch. Esse desvio é aceito e deve constar do README.
-  - Como o body com `text/plain` chega sem validação, a Lambda também responde 400 a JSON muito aninhado (o `json.loads` levanta `RecursionError`, e não `ValueError`) e a `texto` com surrogate solto (`"\ud800"`), que falharia só na chamada ao Comprehend ou à OpenAI. `Content-Type` ausente também é recusado.
+  - Como o body com `text/plain` chega sem validação, a Lambda também responde 400 a JSON muito aninhado (o `json.loads` levanta `RecursionError`, e não `ValueError`) e a `text` com surrogate solto (`"\ud800"`), que falharia só na chamada ao Comprehend ou à OpenAI. `Content-Type` ausente também é recusado.
   - **Limite de tamanho: `maxLength` de 1.000 caracteres**, no Request Validator e na Lambda. O `DetectPiiEntities` aceita até 100 KB de UTF-8 por chamada síncrona e a OpenAI Moderation tem limite próprio — ambos muito acima disso, então a Lambda nunca paga uma chamada externa só para receber erro de tamanho. O valor é definido pelo custo: 1.000 caracteres = no máximo 10 unidades do Comprehend por chamada (ver "Custos").
 - O Comprehend pode errar (falso negativo/positivo); o README não deve apresentar o serviço como garantia de anonimização.
-- **Logs:** nunca logar `texto` ou `texto_censurado` em texto puro no CloudWatch (podem conter PII). Logar apenas metadados: modo, tamanho do texto, latência, status da resposta.
-  - Formato: uma linha JSON por requisição que chega à Lambda (200, 400 ou 502), com `status`, `modo`, `tamanho` (da entrada, em caracteres) e `ms`. No 400, `modo` e `tamanho` ficam `null`. Na falha, mais `falha` (o nome da classe do erro) e `codigo` (status HTTP da OpenAI ou código de erro da AWS) — **nunca** a mensagem do erro, que pode citar dado da requisição. **Confirmado no teste real:** as linhas aparecem no CloudWatch sem prefixo, sem texto e sem traceback.
+- **Logs:** nunca logar `text` ou `censored_text` em texto puro no CloudWatch (podem conter PII). Logar apenas metadados: modo, tamanho do texto, latência, status da resposta.
+  - Formato: uma linha JSON por requisição que chega à Lambda (200, 400 ou 502), com `status`, `mode`, `length` (da entrada, em caracteres) e `ms`. No 400, `mode` e `length` ficam `null`. Na falha, mais `failure` (o nome da classe do erro) e `code` (status HTTP da OpenAI ou código de erro da AWS) — **nunca** a mensagem do erro, que pode citar dado da requisição. **Confirmado no teste real:** as linhas aparecem no CloudWatch sem prefixo, sem texto e sem traceback.
   - Definir **retenção explícita** (ex.: 14 dias) via Terraform nos log groups das duas Lambdas (principal e kill switch). Por padrão o CloudWatch Logs mantém os logs indefinidamente ("never expire"). Não há access log do API Gateway.
   - O log group é criado pelo Terraform **antes** da função (`logging_config` apontando para ele, ou `depends_on`). Se a Lambda rodar antes, ela cria o log group sozinha, sem retenção, e o `apply` seguinte falha com `ResourceAlreadyExistsException`. O mesmo acontece se sobrar um log group de um `destroy` anterior: apagá-lo pelo Console antes do `apply`.
 - Manter Parameter Store (não migrar para Secrets Manager) — Secrets Manager cobra por secret armazenado (~$0,40/mês) e por chamada; não traz benefício necessário aqui (a rotação manual via `value_wo_version` basta), então o Parameter Store `SecureString` é a opção correta tanto por segurança quanto por custo.
@@ -349,13 +351,13 @@ Resumo das principais ameaças consideradas e como o design responde a cada uma 
 | Chave da OpenAI legível no `.tfstate` | `value_wo`: a chave não vai para o state |
 | Vazamento da chave da OpenAI | `SecureString` no Parameter Store, nunca hardcoded; acesso restrito ao ARN exato do parâmetro; projeto dedicado na OpenAI, key restrita e limite de gasto |
 | Escalonamento de privilégios via IAM das Lambdas | Least privilege: `comprehend:DetectPiiEntities` e `ssm:GetParameter` no ARN exato na principal, e só `lambda:PutFunctionConcurrency` no ARN da principal na do kill switch; nunca wildcard |
-| Vazamento de PII via logs | Apenas metadados (modo, tamanho, latência, status), nunca `texto`/`texto_censurado` |
+| Vazamento de PII via logs | Apenas metadados (modo, tamanho, latência, status), nunca `text`/`censored_text` |
 | Envio de PII em texto aberto para terceiro externo (OpenAI) | No modo 3, a OpenAI recebe o texto já com PII substituída pelo Comprehend. **Exceção:** no modo 2, o texto original vai para a OpenAI, que o retém por até 30 dias (documentado no README) |
 | Texto enviado ao Comprehend usado pela AWS para melhorar o serviço | AI services opt-out policy no AWS Organizations |
 | Action de terceiro comprometida no CI (com acesso à role de deploy) | Actions fixadas por SHA de commit (exigido também nas configurações do repositório), `permissions:` mínimas, sem `pull_request_target`, aprovação obrigatória para workflows de PR de fork |
 | Prompt injection via texto do usuário | Nenhum modelo generativo decide o que censurar |
 | Falha de um serviço de moderação liberando conteúdo não censurado | Fail-closed: erro/timeout retorna 502 (ou 5xx do API Gateway, se a Lambda estourar o timeout ou o erro estiver fora da lista de falhas) |
-| Requisição malformada consumindo invocação da Lambda | Request Validator do API Gateway (tipo e valor de `modo`, tamanho mínimo e máximo de `texto`). Desvio confirmado por `Content-Type` diferente, rejeitado pela Lambda (ver "Segurança") |
+| Requisição malformada consumindo invocação da Lambda | Request Validator do API Gateway (tipo e valor de `mode`, tamanho mínimo e máximo de `text`). Desvio confirmado por `Content-Type` diferente, rejeitado pela Lambda (ver "Segurança") |
 | Custo fixo por hora sem tráfego (ex.: NAT Gateway) | Lambda sem VPC |
 | Credenciais AWS de longa duração vazadas | Deploy via GitHub Actions com **OIDC** (sem access keys estáticas); bootstrap único via Console AWS |
 | Segredo vazado via `.tfstate` ou `.tfvars` commitado no repositório público | `.gitignore` cobrindo state e `.tfvars`; state remoto em S3 privado; secret scanning com push protection |
@@ -367,11 +369,11 @@ Resumo das principais ameaças consideradas e como o design responde a cada uma 
 3. Workflows do GitHub Actions: `apply` e `destroy` manuais (`workflow_dispatch`), `test` em pull request e em push na `main`. Actions fixadas por SHA e `permissions:` mínimas.
 4. Terraform:
    - Lambda Python 3.13, arm64, 256 MB, empacotada com `archive_file`, com HTTP via `urllib` (sem dependências), IAM restrito (incluindo logs), timeout de 15 s, log group com retenção criado antes da função e sem reserved concurrency (omitida, ver "Custos");
-   - API Gateway REST, com Request Validator (`minLength` 1, `maxLength` 1.000, `modo` inteiro), Gateway Responses no formato `{"erro": ...}`, uma API key gerada pelo API Gateway e um Usage Plan (rate 5, burst 10, quota 1.000/dia);
+   - API Gateway REST, com Request Validator (`minLength` 1, `maxLength` 1.000, `mode` inteiro), Gateway Responses no formato `{"error": ...}`, uma API key gerada pelo API Gateway e um Usage Plan (rate 5, burst 10, quota 1.000/dia);
    - parâmetro SSM `SecureString` com `value_wo`, a partir do GitHub Secret `OPENAI_API_KEY`.
 5. Kill switch: alarme (mais de 10/min, `notBreaching`), alarme em `Errors` da Lambda kill switch, SNS com assinatura de e-mail (`ALERT_EMAIL`), Lambda com `PutFunctionConcurrency` (128 MB, 10 s, inscrita no tópico) e log group com retenção.
-6. Implementar Comprehend (lista de entidades e score 0,5), OpenAI Moderation, fusão de trechos sobrepostos ou adjacentes, substituição por `***` com offset decrescente, validação (incluindo `Content-Type` e `type(modo) is int`), timeouts, fail closed com 502 e logs só com metadados.
-7. Testes unitários com mocks: substituição, entidades sobrepostas e adjacentes, combinação do modo 3, fail closed, validação (texto vazio, `modo` como `"1"`, `1.0` e `true`).
+6. Implementar Comprehend (lista de entidades e score 0,5), OpenAI Moderation, fusão de trechos sobrepostos ou adjacentes, substituição por `***` com offset decrescente, validação (incluindo `Content-Type` e `type(mode) is int`), timeouts, fail closed com 502 e logs só com metadados.
+7. Testes unitários com mocks: substituição, entidades sobrepostas e adjacentes, combinação do modo 3, fail closed, validação (texto vazio, `mode` como `"1"`, `1.0` e `true`).
 8. Confirmar a assinatura de e-mail do SNS. Depois, teste real:
    - os três modos;
    - offsets com acento e emoji antes da PII;

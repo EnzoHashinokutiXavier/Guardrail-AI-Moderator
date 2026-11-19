@@ -9,9 +9,9 @@ logger.setLevel(logging.INFO)
 
 
 def handler(event, context):
-    funcao = os.environ["FUNCAO_ALVO"]
+    function_name = os.environ["TARGET_FUNCTION"]
     boto3.client("lambda").put_function_concurrency(
-        FunctionName=funcao,
+        FunctionName=function_name,
         ReservedConcurrentExecutions=0,
     )
-    logger.info("kill switch: concorrência de %s zerada", funcao)
+    logger.info("kill switch: concurrency of %s set to 0", function_name)

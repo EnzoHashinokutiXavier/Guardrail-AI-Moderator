@@ -9,13 +9,13 @@ from botocore.stub import Stubber
 
 from kill_switch import app as kill_switch
 
-ALVO = "funcao-alvo-de-teste"  # diferente do nome real: prova que vem do FUNCAO_ALVO
-CHAMADA = {"FunctionName": ALVO, "ReservedConcurrentExecutions": 0}
-MSG_OK = "kill switch: concorrência de funcao-alvo-de-teste zerada"
+TARGET = "test-target-function"  # diferente do nome real: prova que vem do TARGET_FUNCTION
+CALL = {"FunctionName": TARGET, "ReservedConcurrentExecutions": 0}
+MSG_OK = "kill switch: concurrency of test-target-function set to 0"
 ENDPOINT = "https://lambda.us-east-1.amazonaws.com/"
 
 # Formato do evento que o SNS entrega à Lambda (o handler não lê; serve para provar isso).
-EVENTO_SNS = {
+SNS_EVENT = {
     "Records": [{
         "EventSource": "aws:sns",
         "EventVersion": "1.0",
@@ -30,7 +30,7 @@ EVENTO_SNS = {
 }
 
 
-def mensagens(caplog):
+def messages(caplog):
     """Só o que o app.py loga (logger raiz); o botocore tem loggers próprios."""
     return [(r.levelno, r.getMessage()) for r in caplog.records if r.name == "root"]
 
@@ -38,102 +38,102 @@ def mensagens(caplog):
 @pytest.fixture
 def aws_lambda(monkeypatch):
     """Cliente Lambda real com Stubber, entregue ao handler no lugar do boto3.client(...)."""
-    monkeypatch.setenv("FUNCAO_ALVO", ALVO)
-    cliente = boto3.client("lambda")  # região e credenciais falsas do conftest.py
-    pedidos = []
+    monkeypatch.setenv("TARGET_FUNCTION", TARGET)
+    client_ = boto3.client("lambda")  # região e credenciais falsas do conftest.py
+    calls = []
 
     def client(*args, **kwargs):
-        pedidos.append((args, kwargs))
-        return cliente
+        calls.append((args, kwargs))
+        return client_
 
     monkeypatch.setattr(kill_switch, "boto3", types.SimpleNamespace(client=client))
-    with Stubber(cliente) as stubber:
-        yield types.SimpleNamespace(stubber=stubber, pedidos=pedidos)
+    with Stubber(client_) as stubber:
+        yield types.SimpleNamespace(stubber=stubber, calls=calls)
         stubber.assert_no_pending_responses()
 
 
 @pytest.fixture
-def aws_lambda_sem_rede(monkeypatch):
-    """Sem Stubber: o handler cria o cliente real (com os argumentos dele) e cada envio levanta falso.erro."""
-    monkeypatch.setenv("FUNCAO_ALVO", ALVO)
-    falso = types.SimpleNamespace(erro=None, urls=[])
+def aws_lambda_no_network(monkeypatch):
+    """Sem Stubber: o handler cria o cliente real (com os argumentos dele) e cada envio levanta fake.error."""
+    monkeypatch.setenv("TARGET_FUNCTION", TARGET)
+    fake = types.SimpleNamespace(error=None, urls=[])
 
-    def antes_de_enviar(request, **kwargs):
-        falso.urls.append(request.url)
-        raise falso.erro(endpoint_url=request.url)
+    def before_send(request, **kwargs):
+        fake.urls.append(request.url)
+        raise fake.error(endpoint_url=request.url)
 
     def client(*args, **kwargs):
-        cliente = boto3.client(*args, **kwargs)
-        cliente.meta.events.register("before-send.lambda.PutFunctionConcurrency", antes_de_enviar)
-        return cliente
+        client_ = boto3.client(*args, **kwargs)
+        client_.meta.events.register("before-send.lambda.PutFunctionConcurrency", before_send)
+        return client_
 
     monkeypatch.setattr(kill_switch, "boto3", types.SimpleNamespace(client=client))
-    return falso
+    return fake
 
 
-def esperar_sucesso(aws_lambda):
-    aws_lambda.stubber.add_response("put_function_concurrency", {"ReservedConcurrentExecutions": 0}, CHAMADA)
+def expect_success(aws_lambda):
+    aws_lambda.stubber.add_response("put_function_concurrency", {"ReservedConcurrentExecutions": 0}, CALL)
 
 
 # Bloco A - zera a concorrência
 
-@pytest.mark.parametrize("evento", [
-    pytest.param(EVENTO_SNS, id="sns"),
-    pytest.param({}, id="vazio"),
+@pytest.mark.parametrize("event", [
+    pytest.param(SNS_EVENT, id="sns"),
+    pytest.param({}, id="empty"),
     pytest.param(None, id="none"),
 ])
-def test_zera_a_concorrencia(aws_lambda, caplog, evento):
-    esperar_sucesso(aws_lambda)
-    assert kill_switch.handler(evento, None) is None
-    assert aws_lambda.pedidos == [(("lambda",), {})]
-    assert mensagens(caplog) == [(logging.INFO, MSG_OK)]
+def test_sets_concurrency_to_zero(aws_lambda, caplog, event):
+    expect_success(aws_lambda)
+    assert kill_switch.handler(event, None) is None
+    assert aws_lambda.calls == [(("lambda",), {})]
+    assert messages(caplog) == [(logging.INFO, MSG_OK)]
 
 
-def test_segunda_execucao_zera_de_novo(aws_lambda, caplog):
+def test_second_run_sets_zero_again(aws_lambda, caplog):
     # Nova tentativa do SNS/Lambda ou alarme de novo: PutFunctionConcurrency com 0 é idempotente.
-    esperar_sucesso(aws_lambda)
-    esperar_sucesso(aws_lambda)
-    kill_switch.handler(EVENTO_SNS, None)
-    kill_switch.handler(EVENTO_SNS, None)
-    assert len(aws_lambda.pedidos) == 2
-    assert mensagens(caplog) == [(logging.INFO, MSG_OK)] * 2
+    expect_success(aws_lambda)
+    expect_success(aws_lambda)
+    kill_switch.handler(SNS_EVENT, None)
+    kill_switch.handler(SNS_EVENT, None)
+    assert len(aws_lambda.calls) == 2
+    assert messages(caplog) == [(logging.INFO, MSG_OK)] * 2
 
 
 # Bloco B - falha sobe: sem try no handler, a exceção conta em Errors e dispara o alarme kill-switch-erros
 
-@pytest.mark.parametrize("codigo, classe", [
+@pytest.mark.parametrize("code, cls", [
     ("ResourceNotFoundException", "ResourceNotFoundException"),
     ("TooManyRequestsException", "TooManyRequestsException"),
     ("ServiceException", "ServiceException"),
     ("InvalidParameterValueException", "InvalidParameterValueException"),
     ("AccessDeniedException", "ClientError"),  # não modelado no Lambda
 ])
-def test_erro_da_api_sobe(aws_lambda, caplog, codigo, classe):
-    aws_lambda.stubber.add_client_error("put_function_concurrency", codigo, expected_params=CHAMADA)
-    with pytest.raises(ClientError) as erro:
-        kill_switch.handler(EVENTO_SNS, None)
-    assert type(erro.value).__name__ == classe
-    assert erro.value.response["Error"]["Code"] == codigo
-    assert mensagens(caplog) == []  # nada de "zerada" se não zerou
+def test_api_error_propagates(aws_lambda, caplog, code, cls):
+    aws_lambda.stubber.add_client_error("put_function_concurrency", code, expected_params=CALL)
+    with pytest.raises(ClientError) as error:
+        kill_switch.handler(SNS_EVENT, None)
+    assert type(error.value).__name__ == cls
+    assert error.value.response["Error"]["Code"] == code
+    assert messages(caplog) == []  # nada de "set to 0" se não zerou
 
 
-@pytest.mark.parametrize("erro", [
-    pytest.param(ReadTimeoutError, id="timeout-leitura"),
-    pytest.param(EndpointConnectionError, id="sem-conexao"),
+@pytest.mark.parametrize("error", [
+    pytest.param(ReadTimeoutError, id="read-timeout"),
+    pytest.param(EndpointConnectionError, id="no-connection"),
 ])
-def test_sem_rede_sobe(aws_lambda_sem_rede, caplog, erro):
-    aws_lambda_sem_rede.erro = erro
-    with pytest.raises(erro):
-        kill_switch.handler(EVENTO_SNS, None)
+def test_no_network_propagates(aws_lambda_no_network, caplog, error):
+    aws_lambda_no_network.error = error
+    with pytest.raises(error):
+        kill_switch.handler(SNS_EVENT, None)
     # Retry padrão do botocore 1.44.2 (modo "standard"): 1 chamada + 2 retries, na região do ambiente.
-    assert len(aws_lambda_sem_rede.urls) == 3
-    assert all(url.startswith(ENDPOINT) for url in aws_lambda_sem_rede.urls)
-    assert mensagens(caplog) == []
+    assert len(aws_lambda_no_network.urls) == 3
+    assert all(url.startswith(ENDPOINT) for url in aws_lambda_no_network.urls)
+    assert messages(caplog) == []
 
 
-def test_sem_variavel_sobe_antes_de_chamar(aws_lambda, monkeypatch, caplog):
-    monkeypatch.delenv("FUNCAO_ALVO")
+def test_missing_variable_fails_before_call(aws_lambda, monkeypatch, caplog):
+    monkeypatch.delenv("TARGET_FUNCTION")
     with pytest.raises(KeyError):
-        kill_switch.handler(EVENTO_SNS, None)
-    assert aws_lambda.pedidos == []
-    assert mensagens(caplog) == []
+        kill_switch.handler(SNS_EVENT, None)
+    assert aws_lambda.calls == []
+    assert messages(caplog) == []

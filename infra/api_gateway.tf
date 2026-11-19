@@ -1,16 +1,16 @@
 locals {
   api_nome    = "guardrails-moderador-api"
-  api_caminho = "moderar"
+  api_caminho = "moderate"
   api_stage   = "v1"
 
   api_erros = {
-    BAD_REQUEST_BODY             = { status = "400", mensagem = "requisição inválida" }
-    INVALID_API_KEY              = { status = "403", mensagem = "acesso negado" }
-    MISSING_AUTHENTICATION_TOKEN = { status = "403", mensagem = "acesso negado" }
-    THROTTLED                    = { status = "429", mensagem = "limite de requisições excedido" }
-    QUOTA_EXCEEDED               = { status = "429", mensagem = "limite de requisições excedido" }
-    DEFAULT_4XX                  = { status = null, mensagem = "requisição recusada" }
-    DEFAULT_5XX                  = { status = null, mensagem = "serviço de moderação indisponível" }
+    BAD_REQUEST_BODY             = { status = "400", mensagem = "invalid request" }
+    INVALID_API_KEY              = { status = "403", mensagem = "access denied" }
+    MISSING_AUTHENTICATION_TOKEN = { status = "403", mensagem = "access denied" }
+    THROTTLED                    = { status = "429", mensagem = "too many requests" }
+    QUOTA_EXCEEDED               = { status = "429", mensagem = "too many requests" }
+    DEFAULT_4XX                  = { status = null, mensagem = "request rejected" }
+    DEFAULT_5XX                  = { status = null, mensagem = "moderation service unavailable" }
   }
 }
 
@@ -31,21 +31,21 @@ resource "aws_api_gateway_resource" "moderar" {
 
 resource "aws_api_gateway_model" "moderar" {
   rest_api_id  = aws_api_gateway_rest_api.moderador.id
-  name         = "ModerarRequest"
+  name         = "ModerateRequest"
   content_type = "application/json"
 
   schema = jsonencode({
     "$schema" = "http://json-schema.org/draft-04/schema#"
-    title     = "ModerarRequest"
+    title     = "ModerateRequest"
     type      = "object"
-    required  = ["texto", "modo"]
+    required  = ["text", "mode"]
     properties = {
-      texto = {
+      text = {
         type      = "string"
         minLength = 1
         maxLength = 1000
       }
-      modo = {
+      mode = {
         type = "integer"
         enum = [1, 2, 3]
       }
@@ -97,7 +97,7 @@ resource "aws_api_gateway_gateway_response" "erros" {
   status_code   = each.value.status
 
   response_templates = {
-    "application/json" = jsonencode({ erro = each.value.mensagem })
+    "application/json" = jsonencode({ error = each.value.mensagem })
   }
 }
 
