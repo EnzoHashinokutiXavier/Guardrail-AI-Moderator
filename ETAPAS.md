@@ -512,13 +512,21 @@ Marque `[x]` conforme for concluindo.
 - [x] Respostas dos modos 1 e 3 iguais às confirmadas no teste real (9.2); a do modo 2 (`"I want to kill you."` → `"***"`) é a esperada, não foi repetida na API
 
 ### 10.2 Limitações e riscos
-- [ ] Só inglês
-- [ ] Limitação de região/LGPD
-- [ ] Retenção de dados pela AWS e pela OpenAI
-- [ ] Exceção do modo 2 (texto original vai para a OpenAI)
-- [ ] Comprehend não é garantia de anonimização
-- [ ] Risco residual da role de deploy
-- [ ] Desvio do `Content-Type`, se confirmado no teste real
+- [x] Só inglês
+- [x] Limitação de região/LGPD
+- [x] Retenção de dados pela AWS e pela OpenAI
+- [x] Exceção do modo 2 (texto original vai para a OpenAI)
+- [x] Comprehend não é garantia de anonimização
+- [x] Risco residual da role de deploy
+- [x] Desvio do `Content-Type`, se confirmado no teste real
+- [x] Seção Limitations and risks no README (em inglês), entre Architecture e Repository layout, com uma subseção por item e aviso no topo para usar dados fictícios nas demos
+- [x] Só inglês: `LanguageCode="en"` fixo no código; texto em outro idioma não dá erro, mas a PII "não é detectada de forma confiável" (a frase da seção API foi suavizada para o mesmo texto); lista fechada sem identificadores de outros países, como o CPF
+- [x] Comprehend: falso negativo e falso positivo, score ≥ 0,5 de propósito, tipos fora da lista mantidos e, no modo 3, o que escapa vai para a OpenAI
+- [x] Região/LGPD: o texto sai do Brasil já na detecção de PII (transferência internacional); a ordem Comprehend → OpenAI só protege contra o terceiro fora da AWS no modo 3; sem revisão de conformidade com a LGPD
+- [x] Retenção em tabela (stack, Comprehend, OpenAI): logs só de metadados por 14 dias; opt-out policy de AI services feita no Console, fora do Terraform (fork em outra conta precisa da própria); OpenAI até 30 dias para monitoramento de abuso, "a menos que a lei exija mais", sem treino por padrão; ZDR só com aprovação da OpenAI. Política da OpenAI reconferida em 19/11/2026 na página de data controls
+- [x] Role de deploy: prefixo restringe o nome, não as permissões; mitigação principal no `sub` da `main` com IDs imutáveis; role fora do prefixo com policy inline; permissions boundary como próximo passo se mais pessoas tiverem escrita na `main`
+- [x] `Content-Type`: desvio confirmado na 5.4, 7.1 e 9.2 (`text/plain` e `x-www-form-urlencoded` chegam à Lambda e voltam 400 dela; `charset=utf-8` e `Application/JSON` validados pelo API Gateway); conta no kill switch, aceito
+- [x] Links internos da seção API para a nova seção (só inglês e modo 2)
 
 ### 10.3 Custos, segurança e licença
 - [ ] Pior caso de custo

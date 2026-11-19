@@ -42,7 +42,7 @@ The protections stay on during a demo. **More than 10 requests in the same clock
   - `2`: censor inappropriate content only
   - `3`: censor both, personal data first
 
-Only English is supported. A text in another language does not cause an error, but its personal data is not detected and comes back uncensored.
+Only English is supported. A text in another language does not cause an error, but its personal data is not reliably detected and may come back uncensored (see [Limitations and risks](#limitations-and-risks)).
 
 ### Response
 
@@ -96,7 +96,7 @@ curl -X POST '<URL>' \
 {"texto_censurado": "***"}
 ```
 
-Mode 2 does not redact personal data: if the text is not flagged, it comes back unchanged, names and e-mails included. It also sends the original text to OpenAI.
+Mode 2 does not redact personal data: if the text is not flagged, it comes back unchanged, names and e-mails included. It also sends the original text to OpenAI (see [Mode 2 sends the original text to OpenAI](#mode-2-sends-the-original-text-to-openai)).
 
 **Mode 3: both**
 
@@ -203,6 +203,67 @@ The usage plan's throttle and quota are best effort according to AWS. In the rea
 ### Editing the diagrams
 
 The diagrams are `.drawio.svg` files: each SVG has its editable draw.io diagram embedded. Open them in [draw.io Desktop](https://github.com/jgraph/drawio-desktop) or in VS Code with the [Draw.io Integration](https://marketplace.visualstudio.com/items?itemName=hediet.vscode-drawio) extension, then save; the image updates on save.
+
+## Limitations and risks
+
+This is a portfolio project. The limitations below are known and accepted on purpose, and they are listed here so that nobody has to find them out on their own.
+
+> [!IMPORTANT]
+> Use fictitious data in demos. Do not send real personal data of anyone to this API: the text leaves Brazil, goes to third-party services and is not guaranteed to be anonymized.
+
+### English only
+
+Comprehend's `DetectPiiEntities` supports only English and Spanish, not Portuguese, and the Lambda always calls it with `LanguageCode="en"`. A text in another language is not rejected. The API answers normally, but its personal data is not reliably detected and may come back uncensored.
+
+Only the entity types in a closed list are censored: names, e-mails, phone numbers, addresses, US Social Security numbers, card and bank data, passport and driver's license numbers, IP addresses and passwords. Identifiers from other countries, such as the Brazilian CPF, are not on the list.
+
+### Comprehend is not an anonymization guarantee
+
+Comprehend is a machine learning model. It can miss personal data (false negatives) and censor ordinary words (false positives), so the output must not be treated as anonymized data.
+
+- Only entities with a confidence score of at least `0.5` are censored. The threshold is low on purpose, because in a guardrail censoring too much is better than letting personal data through, but it does not catch everything.
+- Entity types outside the list, such as `DATE_TIME`, `AGE` and `URL`, are kept on purpose.
+- In mode 3, whatever Comprehend misses goes to OpenAI as it is.
+
+### Mode 2 sends the original text to OpenAI
+
+Mode 2 has no Comprehend step. The **original text**, personal data included, is sent to OpenAI, and if it is not flagged it comes back unchanged. Use mode 3 when the text may contain personal data. Even then, mode 3 only protects what Comprehend detects.
+
+### Region and LGPD
+
+The stack runs in `us-east-1`, because Comprehend is not available in São Paulo (`sa-east-1`). The text therefore leaves Brazil already at the PII detection step, not only at the moderation step. Under Brazil's data protection law (LGPD), sending personal data to these services is an international data transfer.
+
+The fixed order Comprehend → OpenAI does not keep the processing in Brazil. Its purpose is narrower: in mode 3, it keeps personal data from reaching, in clear text, a third party outside AWS. In mode 2 that protection does not exist.
+
+This project has not gone through an LGPD compliance review. Using it with real personal data would need its own legal basis and assessment.
+
+### Data retention by AWS and OpenAI
+
+| Where | What is kept | Control in this project |
+|---|---|---|
+| This stack | No text. CloudWatch Logs keep one metadata line per request (status, mode, length, latency) for 14 days. API Gateway has no access or execution logs. | Log policy in the code and retention set in Terraform |
+| Amazon Comprehend | As an AWS AI service, it may by default store and use the processed content to improve the service. | AWS Organizations AI services opt-out policy for all AI services, attached to the root with `@@none` so it cannot be overridden. It was created once in the Console, outside Terraform: a fork deployed to another account needs its own. |
+| OpenAI Moderation | Under OpenAI's API data policy, abuse monitoring logs are kept for up to 30 days, unless longer retention is required by law, and API data is not used for training by default. In mode 2 this is the original text; in mode 3, the text already redacted by Comprehend. | None on this side. Zero Data Retention requires OpenAI's approval. |
+
+These are the providers' policies at the time of writing, and they can change. Check [OpenAI's data controls](https://developers.openai.com/api/docs/guides/your-data) and the [AWS AI services opt-out policies](https://docs.aws.amazon.com/organizations/latest/userguide/orgs_manage_policies_ai-opt-out.html) before relying on them.
+
+### Residual risk of the deploy role
+
+The deploy role used by GitHub Actions has to create IAM roles and pass them to Lambda, because Terraform creates the Lambda roles. Those IAM actions are restricted to the `guardrails-*` prefix, and `iam:PassRole` only works for `lambda.amazonaws.com`.
+
+The prefix restricts the **names** of the roles, not the **permissions** given to them. The deploy role can still create a `guardrails-*` role with broad permissions and attach it to a Lambda. This is a known risk, accepted instead of a permissions boundary:
+
+- The main mitigation is the trust policy. The role only accepts OIDC tokens from the `main` branch of this repository, identified by the owner's and the repository's immutable IDs. Only code that reached `main` can assume it, and this repository has a single developer.
+- The deploy role is outside the `guardrails-*` prefix and its permissions are an inline policy, so it cannot change its own permissions.
+- Third-party actions are pinned by commit SHA, and pull requests from forks run only the `test` workflow, without secrets or AWS credentials.
+
+If more people get write access to `main`, the next step is a permissions boundary that every `guardrails-*` role must carry.
+
+### `Content-Type` bypasses the request validator
+
+API Gateway's request validator chooses the JSON schema by the request's `Content-Type`. The real test on AWS confirmed that a body sent as `text/plain` or `application/x-www-form-urlencoded` passes API Gateway without validation and invokes the Lambda. Bodies sent as `application/json`, with any casing and with parameters such as `; charset=utf-8`, are validated normally.
+
+The Lambda checks the header itself and answers `400` (`requisição inválida`) without calling Comprehend, Parameter Store or OpenAI, so no text is processed. The request is still a Lambda invocation: it costs a Lambda call and **counts toward the kill switch**. This deviation is accepted, because the kill switch already treats more than 10 invocations a minute as abuse, valid or not.
 
 ## Repository layout
 
