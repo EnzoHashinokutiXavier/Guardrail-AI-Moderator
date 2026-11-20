@@ -4,6 +4,8 @@ A serverless API on AWS that receives an **English** text and censors parts of i
 
 The infrastructure is defined in Terraform and deployed only by GitHub Actions. The stack is created for a demo and destroyed afterwards, so it costs nothing while it is down.
 
+The code is public for noncommercial use under the [PolyForm Noncommercial License 1.0.0](#license). It is source-available, not open source.
+
 > [!NOTE]
 > **The API is only online during demos.** This repository is the definition of the infrastructure, not a service that is always running. Outside a demo, the URL does not exist and every request fails.
 
@@ -196,7 +198,7 @@ Each Lambda role has only the actions it needs, on the exact resource ARN whenev
 
 ![Cost protection layers](docs/diagrams/cost-protection.drawio.svg)
 
-The usage plan's throttle and quota are best effort according to AWS. In the real test, the throttle stopped only 1 of 120 parallel requests. That is why the kill switch, not the throttle, is the cost control. The worst-case figures are estimates from AWS list prices; a sustained flood was not tested.
+The usage plan's throttle and quota are best effort according to AWS. In the real test, the throttle stopped only 1 of 120 parallel requests. That is why the kill switch, not the throttle, is the cost control. The worst-case figures are estimates from AWS list prices; a sustained flood was not tested. See [Cost](#cost) for the full estimate.
 
 ### Editing the diagrams
 
@@ -262,6 +264,85 @@ If more people get write access to `main`, the next step is a permissions bounda
 API Gateway's request validator chooses the JSON schema by the request's `Content-Type`. The real test on AWS confirmed that a body sent as `text/plain` or `application/x-www-form-urlencoded` passes API Gateway without validation and invokes the Lambda. Bodies sent as `application/json`, with any casing and with parameters such as `; charset=utf-8`, are validated normally.
 
 The Lambda checks the header itself and answers `400` (`invalid request`) without calling Comprehend, Parameter Store or OpenAI, so no text is processed. The request is still a Lambda invocation: it costs a Lambda call and **counts toward the kill switch**. This deviation is accepted, because the kill switch already treats more than 10 invocations a minute as abuse, valid or not.
+
+## Cost
+
+All figures are estimates from AWS list prices in `us-east-1`, checked on 2026-11-20. The account is more than 12 months old, so the 12-month free tiers of Comprehend and API Gateway do not apply and are not counted. The permanent free tiers of Lambda and CloudWatch Logs are also left out, to keep the estimate conservative.
+
+### Fixed cost: about US$ 0 a month
+
+Nothing in the stack charges just for existing:
+
+- No NAT Gateway (the Lambda has no VPC), no AWS WAF and no customer-managed KMS key.
+- The two CloudWatch alarms are within the 10 free alarms. Parameter Store standard tier, the AWS-managed `aws/ssm` key and the SNS topic have no monthly charge.
+- The two AWS Budgets used for alerts are free.
+- Between demos the stack is destroyed. What stays is the bootstrap, created once outside Terraform: the Terraform state bucket, a few KB in S3 that cost cents a month, and resources with no charge (OIDC provider, deploy role, budget, Cost Anomaly Detection, opt-out policy).
+
+### Cost per request
+
+| Component | Price | Per request |
+|---|---|---|
+| Comprehend `DetectPiiEntities` (modes 1 and 3) | US$ 0.0001 per unit of 100 characters, minimum 3 units per call | US$ 0.0003 up to 300 characters, US$ 0.001 at the 1,000-character maximum |
+| API Gateway (REST) | US$ 3.50 per million requests | US$ 0.0000035 |
+| Lambda (256 MB, arm64, ~300 ms) | US$ 0.20 per million requests plus duration | about US$ 0.0000012 |
+| CloudWatch Logs (metadata only, ~1 KB) | US$ 0.50 per GB ingested | about US$ 0.0000005 |
+| OpenAI Moderation (modes 2 and 3) | free | US$ 0 |
+
+Comprehend is about 98% of the cost of a request in modes 1 and 3. Mode 2 does not call Comprehend and costs a fraction of that.
+
+| Requests a day, sustained for a month | Mode 2 | Modes 1 and 3, up to 300 characters | Modes 1 and 3, 1,000 characters |
+|---:|---:|---:|---:|
+| 10 | US$ 0.002 | US$ 0.09 | US$ 0.30 |
+| 100 | US$ 0.02 | US$ 0.92 | US$ 3.02 |
+| 1,000 (daily quota) | US$ 0.16 | US$ 9.16 | US$ 30.16 |
+
+A demo done by hand is a few dozen requests and costs cents. The financial risk is abuse, not normal use.
+
+### Worst case
+
+| Scenario | Estimated cost | What limits it |
+|---|---|---|
+| Flood until the kill switch acts | about **US$ 6** | The kill switch reacts in 1 to 3 minutes. Until then, the real ceiling is the account's concurrency limit of 10, not the usage plan throttle: about 33 requests a second at ~300 ms each, ≈ 6,000 requests × up to 10 Comprehend units. If the 5 req/s throttle held, it would be about 900 requests and less than US$ 1. |
+| Slow abuse below the trigger | about **US$ 1 a day** | The daily quota of 1,000 requests × up to 10 Comprehend units. The quota is best effort, so this limit is too. |
+| Requests after the kill switch | US$ 3.50 per million | The Lambda no longer runs, so there is no Comprehend cost, but every request that reaches API Gateway is still a billed call. If it goes on, the `destroy` workflow removes the URL. |
+
+These are estimates, not measurements: a sustained flood was not tested. In the real test the throttle stopped only 1 of 120 parallel requests, which is why the kill switch is the cost control.
+
+AWS Budgets (US$ 5 a month, e-mail at 85% and 100% of actual spend and at 100% of forecast) and Cost Anomaly Detection (US$ 1 threshold, daily e-mail summary) only send alerts. Budgets is evaluated a few times a day, so it does not replace the kill switch. On the OpenAI side, the key belongs to a dedicated project with a spending limit.
+
+## Threats and mitigations
+
+| Threat | Mitigation |
+|---|---|
+| Leaked API key | The key is never published, and the stack is only online during demos. Throttle, quota and kill switch still apply. `destroy` + `apply` invalidates the key and creates a new one; `apply` alone keeps it. |
+| Flood or abuse causing unexpected cost | Kill switch at more than 10 invocations a minute, turned back on only by a manual `apply`. Usage plan throttle and quota (best effort), Budgets and Cost Anomaly Detection (alerts only). See [Worst case](#worst-case). |
+| Kill switch failing silently | A second alarm on the kill-switch Lambda's `Errors` sends an e-mail. |
+| Malformed requests invoking the Lambda | API Gateway's request validator checks `text` and `mode` before the Lambda runs. The Lambda repeats the validation and rejects bodies that bypass the validator through `Content-Type` (see [`Content-Type` bypasses the request validator](#content-type-bypasses-the-request-validator)). |
+| A moderation service failing and letting text through uncensored | Fail closed: an error or timeout from Comprehend, Parameter Store or OpenAI returns `502` and no text. A Lambda timeout or an unexpected error returns a `5xx` from API Gateway. |
+| Personal data leaking through logs | Logs have metadata only (status, mode, length, latency and, on failures, the error type and code), never `text` or `censored_text`. API Gateway has no access or execution logs. |
+| Personal data sent in clear text to a third party (OpenAI) | In mode 3, OpenAI receives the text already redacted by Comprehend. Mode 2 is the exception: it sends the original text. See [Mode 2 sends the original text to OpenAI](#mode-2-sends-the-original-text-to-openai). |
+| Text sent to Comprehend used by AWS to improve the service | AWS Organizations AI services opt-out policy. |
+| Prompt injection through the user's text | No generative model decides what to censor. Comprehend returns entity offsets and the Moderation API returns a flag. |
+| OpenAI key leaked | Stored as a `SecureString` in Parameter Store and never hardcoded. Only the moderator's role can read it, on the exact parameter ARN. Dedicated OpenAI project, restricted key and spending limit. |
+| OpenAI key readable in the Terraform state | Written with `value_wo` (write-only), so it never reaches the state. |
+| Secrets committed to the public repository | `.gitignore` covers state and `.tfvars` files; the state lives in a private S3 bucket; GitHub secret scanning with push protection is on. |
+| Long-lived AWS credentials leaked | No AWS access keys exist. GitHub Actions uses OIDC and gets short-lived credentials; the one-time bootstrap was done in the Console. |
+| Privilege escalation through the Lambda roles | Least privilege: besides writing to its own log group, the moderator can only call `comprehend:DetectPiiEntities` and read its one parameter, and the kill switch can only call `lambda:PutFunctionConcurrency` on the moderator. |
+| Privilege escalation through the deploy role | OIDC trust limited to the `main` branch of this repository; IAM actions and `iam:PassRole` limited to `guardrails-*`. Residual risk accepted, see [Residual risk of the deploy role](#residual-risk-of-the-deploy-role). |
+| Compromised third-party action in CI | Actions pinned by commit SHA (also enforced in the repository settings), minimal `permissions:`, no `pull_request_target`, approval required for workflows from fork pull requests. |
+| Fixed hourly cost with no traffic | No VPC and no NAT Gateway; the stack is destroyed between demos. |
+
+## License
+
+This repository is **source-available, not open source**. It is licensed under the [PolyForm Noncommercial License 1.0.0](LICENSE).
+
+- You may read, study, modify and redistribute the code for any **noncommercial** purpose, such as personal study, research, hobby projects, or use by educational and other noncommercial organizations.
+- Commercial use is not covered by this license.
+- Anyone who receives a copy must also receive the license terms (or their URL) and the `Required Notice:` line at the end of [LICENSE](LICENSE).
+
+It is not open source under the OSI definition, because that definition requires allowing commercial use. PolyForm was chosen instead of CC BY-NC 4.0 because Creative Commons does not recommend its licenses for software.
+
+Like any public repository, it can be viewed and forked on GitHub under GitHub's Terms of Service. The license covers this code only: AWS and OpenAI are used under their own terms.
 
 ## Repository layout
 

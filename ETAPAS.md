@@ -547,9 +547,14 @@ Marque `[x]` conforme for concluindo.
 - [x] Destroy
 
 ### 10.3 Custos, segurança e licença
-- [ ] Pior caso de custo
-- [ ] Tabela de ameaças e mitigações
-- [ ] Licença não comercial (código público, não open source)
+- [x] Pior caso de custo
+- [x] Tabela de ameaças e mitigações
+- [x] Licença não comercial (código público, não open source)
+- [x] Seções Cost, Threats and mitigations e License no README (em inglês), entre Limitations and risks e Repository layout; link da subseção Cost protection para Cost e menção à licença na introdução
+- [x] Cost: custo fixo ≈ US$ 0 (o que sobra depois do destroy é o bootstrap), custo por requisição, tabela mensal com 10, 100 e 1.000 req/dia, pior caso (flood ≈ US$ 6, abuso lento ≈ US$ 1/dia, requisições depois do kill switch a US$ 3,50 por milhão no API Gateway) e Budgets/Cost Anomaly Detection como alertas
+- [x] Preços reconferidos em 20/11/2026: Comprehend com unidade de 100 caracteres e mínimo de 3 unidades (US$ 0,0001 por unidade no exemplo da página, a tabela por região não carregou), API Gateway REST a US$ 3,50/milhão, OpenAI Moderation gratuita. A página do API Gateway não diz que requisições recusadas (403/429) ficam de graça, então o README não afirma isso
+- [x] Ameaças: tabela do PROJETO.md traduzida, com links para as seções de limitações; permissões e campos do log conferidos em `infra/` e `src/moderador/app.py`
+- [x] License: PolyForm Noncommercial 1.0.0, source-available e não open source (OSI), Required Notice, motivo de não usar CC BY-NC e fork pelos Termos do GitHub
 
 ### 10.4 Manual para criar moderadores de texto (pós-conclusão)
 - [ ] Após concluir e revisar o projeto, criar um manual em Markdown para ensinar a adaptar sua lógica e criar moderadores de texto para outros programas
