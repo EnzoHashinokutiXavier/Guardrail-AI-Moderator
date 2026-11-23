@@ -557,9 +557,15 @@ Marque `[x]` conforme for concluindo.
 - [x] License: PolyForm Noncommercial 1.0.0, source-available e não open source (OSI), Required Notice, motivo de não usar CC BY-NC e fork pelos Termos do GitHub
 
 ### 10.4 Manual para criar moderadores de texto (pós-conclusão)
-- [ ] Após concluir e revisar o projeto, criar um manual em Markdown para ensinar a adaptar sua lógica e criar moderadores de texto para outros programas
-- [ ] Explicar o fluxo de moderação e como substituir ou integrar os serviços usados neste projeto
-- [ ] Separar os conceitos reutilizáveis das escolhas específicas de infraestrutura e serviços deste projeto
+- [x] Após concluir e revisar o projeto, criar um manual em Markdown para ensinar a adaptar sua lógica e criar moderadores de texto para outros programas
+- [x] Explicar o fluxo de moderação e como substituir ou integrar os serviços usados neste projeto
+- [x] Separar os conceitos reutilizáveis das escolhas específicas de infraestrutura e serviços deste projeto
+- [x] `MANUAL.md` na raiz, em inglês (como o README), com as decisões em ordem lógica para quem vai construir o próprio moderador, não na ordem cronológica do projeto
+- [x] 26 decisões em 8 partes: o que o moderador faz, detecção, lógica, privacidade (reutilizáveis), execução e entrega (específicas deste projeto), testes e adaptação; tabela inicial indicando o que é reutilizável
+- [x] Cada decisão com a escolha, o motivo, a vantagem e o ponto negativo, seguidos de alternativas (por exemplo, Presidio, Google Sensitive Data Protection, Azure AI Language e Bedrock Guardrails para PII; Azure AI Content Safety, `DetectToxicContent` e Llama Guard para conteúdo)
+- [x] Trechos curtos de Python tirados do `app.py` (fusão e substituição, `type(mode) is int`, surrogate, `FAILURES` e fail closed, `is not False`) e uma interface independente de provedor (`detect_pii`, `is_inappropriate`, `merge`, `moderate`), executada localmente
+- [x] Parte 8 com padrões de integração (função no código, serviço HTTP, guardrail em volta de LLM, etapa assíncrona), o que conferir ao trocar de provedor (unidade dos offsets, tipos, falhas, idioma/região/retenção) e checklist
+- [x] Link para o manual na introdução e no Repository layout do README
 
 ---
 

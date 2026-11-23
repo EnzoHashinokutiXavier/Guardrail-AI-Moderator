@@ -6,6 +6,8 @@ The infrastructure is defined in Terraform and deployed only by GitHub Actions. 
 
 The code is public for noncommercial use under the [PolyForm Noncommercial License 1.0.0](#license). It is source-available, not open source.
 
+To build a moderator of your own, read the [manual](MANUAL.md): it explains each design decision of this project, why it was made, its trade-offs and the alternatives.
+
 > [!NOTE]
 > **The API is only online during demos.** This repository is the definition of the infrastructure, not a service that is always running. Outside a demo, the URL does not exist and every request fails.
 
@@ -353,4 +355,5 @@ tests/                unit tests (pytest)
 infra/                Terraform
 .github/workflows/    test, apply, destroy
 docs/diagrams/        architecture diagrams (.drawio.svg)
+MANUAL.md             design decisions, trade-offs and alternatives for building your own moderator
 ```
