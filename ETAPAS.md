@@ -572,10 +572,17 @@ Marque `[x]` conforme for concluindo.
 ## 11. Conclusão
 
 ### 11.1 Revisão final
-- [ ] Conferir que nenhum segredo, e-mail ou Account ID está nos arquivos versionados
-- [ ] Conferir que o `PROJETO.md` reflete o que foi implementado
-- [ ] Conferir que o workflow `test` passa na `main`
+- [x] Conferir que nenhum segredo, e-mail ou Account ID está nos arquivos versionados
+- [x] Conferir que o `PROJETO.md` reflete o que foi implementado
+- [x] Conferir que o workflow `test` passa na `main`
+- [x] Varredura no histórico inteiro (76 commits, todas as branches), não só nos arquivos atuais: access keys da AWS (`AKIA`/`ASIA`), chaves da OpenAI (`sk-`), tokens do GitHub, chaves privadas, números de 12 dígitos, ARNs com conta, hosts `execute-api` e e-mails. Só placeholders: `sk-exemplo-nao-e-uma-chave-real`, `alertas@example.com`, `123456789012`, `john.smith@example.com` e `j@x.com`
+- [x] Diagramas `.drawio.svg` conferidos também no XML embutido: nenhum dado sensível
+- [x] O e-mail do autor aparece nos metadados dos commits (fora dos arquivos versionados): fica a critério do dono configurar o e-mail `noreply` do GitHub para os próximos commits
+- [x] `PROJETO.md` conferido contra `src/`, `infra/` e `.github/workflows/`; corrigidos: rota antiga dá 403 (não 400), PII em outro idioma "não detectada de forma confiável", `DetectPiiEntities` em `"*"` por não aceitar permissão por recurso, tempos do kill switch medidos na 9.3, preços reconferidos em 20/11/2026, `-input=false` nos comandos do `destroy`, `docs/diagrams/` e `MANUAL.md` na estrutura, retenção da OpenAI "a menos que a lei exija mais" e próximos passos marcados como concluídos
+- [x] Workflow `test` com sucesso no último commit da `main` (`6d4a63b`), com todos os passos (pytest, `fmt`, `init`, `validate`) em sucesso; localmente `180 passed` e `terraform fmt -check` sem erro
 
 ### 11.2 Entrega
-- [ ] Confirmar que a stack está destruída (custo zero em repouso)
-- [ ] Deixar o repositório público e pronto para demonstração
+- [x] Confirmar que a stack está destruída (custo zero em repouso)
+- [x] Deixar o repositório público e pronto para demonstração
+- [x] Último `apply` em 19/11/2026 16:02 UTC e último `destroy` em 19/11/2026 17:04 UTC, com o passo `terraform destroy` em sucesso; nenhum `apply` depois disso. Console e state no S3 conferidos vazios depois do destroy da 9.4; o da 10.2.1 foi conferido só pelo histórico do workflow
+- [x] Repositório público, com descrição, tópicos e README com o passo a passo da demo (seção Demo access)

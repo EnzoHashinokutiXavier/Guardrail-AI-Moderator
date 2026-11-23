@@ -42,7 +42,7 @@ Consequência para a narrativa de LGPD: o texto recebido **sai do Brasil também
 **Retenção dos dados pelos provedores:**
 
 - **Comprehend:** ele está na lista de AI services da AWS que podem armazenar e usar o conteúdo processado para melhorar o serviço. Para impedir isso, aplicar uma **AI services opt-out policy** no AWS Organizations (feito no bootstrap, ver "Próximos passos"). Uma conta avulsa pode criar uma organização só com ela mesma, sem custo.
-- **OpenAI:** por padrão, a API da OpenAI retém os dados enviados por até 30 dias para monitoramento de abuso, sem usá-los para treino. Isso pesa principalmente no modo 2, em que o texto original com PII vai para a OpenAI. O README deve citar essa retenção.
+- **OpenAI:** por padrão, a API da OpenAI retém os dados enviados por até 30 dias para monitoramento de abuso (a menos que a lei exija mais), sem usá-los para treino. Isso pesa principalmente no modo 2, em que o texto original com PII vai para a OpenAI. O README deve citar essa retenção.
 
 ### Rede — Lambda sem VPC
 
@@ -63,7 +63,7 @@ Em vez de manter uma lista própria de chaves de acesso, usar **API Gateway API 
 
 Rota: `POST /v1/moderate` (`https://<id>.execute-api.us-east-1.amazonaws.com/v1/moderate`).
 
-**Contrato em inglês:** rota, campos (`text`, `mode`, `censored_text`, `error`) e mensagens de erro ficam em inglês, como o texto aceito e o README. A primeira versão usava nomes em português (`/v1/moderar`, `texto`, `modo`, `texto_censurado`, `erro`); a troca foi feita na etapa 10.2.1, e os nomes antigos passaram a dar 400.
+**Contrato em inglês:** rota, campos (`text`, `mode`, `censored_text`, `error`) e mensagens de erro ficam em inglês, como o texto aceito e o README. A primeira versão usava nomes em português (`/v1/moderar`, `texto`, `modo`, `texto_censurado`, `erro`); a troca foi feita na etapa 10.2.1. Os campos antigos passaram a dar 400 (Request Validator) e a rota antiga, 403 (o API Gateway responde `MISSING_AUTHENTICATION_TOKEN` a rota inexistente).
 
 ### Request
 
@@ -82,7 +82,7 @@ Rota: `POST /v1/moderate` (`https://<id>.execute-api.us-east-1.amazonaws.com/v1/
 
 A autenticação não vai no corpo do JSON — é feita pelo header `x-api-key` do API Gateway. O header `Content-Type` deve ser `application/json`.
 
-**Só texto em inglês é suportado.** Texto em outro idioma não gera erro: a API responde normalmente, mas a PII não é detectada e passa sem censura.
+**Só texto em inglês é suportado.** Texto em outro idioma não gera erro: a API responde normalmente, mas a PII não é detectada de forma confiável e pode passar sem censura.
 
 ### Response
 
@@ -182,7 +182,7 @@ Em nenhum caso de erro o texto é devolvido.
 
   A Moderation foi testada com o limite ativo (porque o limite pode bloquear até a Moderation gratuita): `flagged` False/True conforme esperado, e `chat/completions` bloqueado pela allowlist.
 - **IAM least privilege:**
-  - Role da Lambda principal: `comprehend:DetectPiiEntities` e `ssm:GetParameter` limitado ao ARN exato do parâmetro da chave da OpenAI (nunca `ssm:GetParameter*` genérico ou `comprehend:*`).
+  - Role da Lambda principal: `comprehend:DetectPiiEntities` e `ssm:GetParameter` limitado ao ARN exato do parâmetro da chave da OpenAI (nunca `ssm:GetParameter*` genérico ou `comprehend:*`). O `DetectPiiEntities` não aceita permissão por recurso, então é a única ação concedida em `"*"`.
   - Role da Lambda kill switch: `lambda:PutFunctionConcurrency` no ARN da função principal.
   - As duas roles também têm `logs:CreateLogStream` e `logs:PutLogEvents`, restritos ao ARN do log group da própria função. Sem isso, nenhuma Lambda grava log. `logs:CreateLogGroup` não entra, porque o log group é criado pelo Terraform.
   - Não é preciso `kms:Decrypt`: a chave gerenciada `alias/aws/ssm` já permite a descriptografia via SSM para quem tem `ssm:GetParameter`.
@@ -219,7 +219,7 @@ Como este é um projeto de portfólio (sem tráfego real esperado), o foco é ev
   - Alarme do CloudWatch em `Invocations` da Lambda principal: `Sum > 10` (`GreaterThanThreshold`, threshold 10), período de 60 s, 1 de 1 datapoint.
   - **O período segue o minuto do relógio, não uma janela móvel.** "Mais de 10 em 1 minuto" significa mais de 10 entre `hh:mm:00` e `hh:mm:59`. Um uso que se divide entre dois minutos (por exemplo, 10 + 10 em 40 s) não dispara. No pior caso, cerca de 20 invocações em 60 s passam sem disparar o alarme. É aceito: o custo disso é desprezível, e a quota diária cobre o abuso que fica abaixo do gatilho.
   - `treat_missing_data = notBreaching`. Depois do kill, as invocações caem a zero e o alarme volta sozinho para `OK`. Assim, se a stack for religada e o abuso continuar, ele dispara de novo.
-  - A reação leva cerca de 1–3 minutos. No teste real (15 chamadas em sequência dentro do mesmo minuto), o alarme entrou em ALARM cerca de 1 minuto depois da rajada, e a API passou a responder 500 cerca de 3 s depois disso. O alarme voltou sozinho para `OK` cerca de 6 minutos depois, sem e-mail (não há `ok_actions`).
+  - A reação leva cerca de 1–3 minutos. No teste real (15 chamadas em sequência dentro do mesmo minuto), o alarme entrou em ALARM cerca de 1 minuto depois da rajada, e a API passou a responder 500 cerca de 3 s depois disso. O alarme voltou sozinho para `OK` cerca de 6 minutos depois, sem e-mail (não há `ok_actions`). Na repetição com a Lambda final (etapa 9.3, 25 chamadas em sequência), o alarme entrou em ALARM cerca de 89 s depois da rajada, a API passou a responder 500 em até 15 s e o alarme voltou para `OK` em cerca de 1 minuto.
   - Os alarmes só têm `alarm_actions`. Uma ação de `OK` ou de `INSUFFICIENT_DATA` no mesmo tópico derrubaria a API a cada volta para `OK`, inclusive logo depois de todo `apply`.
   - Ação: SNS → Lambda kill switch → `PutFunctionConcurrency` com `0` (throttle total da função). A permissão é só `lambda:PutFunctionConcurrency` no ARN da função principal. A Lambda kill switch (`guardrails-kill-switch`, Python 3.13, arm64, 128 MB, timeout de 10 s) recebe o nome da principal por variável de ambiente, não lê o evento e não captura exceção: uma falha conta em `Errors` e o SNS, que invoca de forma assíncrona, ganha as 2 novas tentativas automáticas da Lambda. A invocação pelo SNS é liberada por `aws_lambda_permission` com `source_arn` no tópico. **Qualquer mensagem publicada no tópico derruba a API**, inclusive um teste manual. O mesmo tópico SNS (`guardrails-alertas`) tem uma assinatura de e-mail. Como o tópico é recriado a cada `apply` depois de um `destroy`, a assinatura nasce pendente: **confirmar o e-mail da AWS depois de cada `apply` que recria a stack**, senão o aviso não chega. A AWS apaga a assinatura não confirmada em 48 h, e o `apply` seguinte a recria. A Lambda do kill switch funciona mesmo sem a confirmação.
   - O tópico fica sem criptografia: um alarme do CloudWatch não publica em tópico com a chave gerenciada `alias/aws/sns`, e uma chave própria teria custo mensal. A mensagem só traz dados do alarme, nunca texto de usuário. O tópico também fica sem `aws_sns_topic_policy`: a política padrão já deixa o CloudWatch da própria conta publicar (comprovado no teste real).
@@ -236,7 +236,7 @@ Como este é um projeto de portfólio (sem tráfego real esperado), o foco é ev
 
 ### Estimativa de custo por volume de uso
 
-Estimativa **conservadora** para a stack no ar (região `us-east-1`, valores em US$, mês = 30 dias). Preços conferidos nas páginas oficiais da AWS em 24/09/2026 — **reconferir antes de fixar quotas e alertas**.
+Estimativa **conservadora** para a stack no ar (região `us-east-1`, valores em US$, mês = 30 dias). Preços conferidos nas páginas oficiais da AWS em 24/09/2026 e reconferidos em 20/11/2026, para a seção Cost do README — **reconferir antes de fixar quotas e alertas**.
 
 **Premissas por requisição:**
 
@@ -278,7 +278,7 @@ O objetivo é que nada do sistema — aplicação ou infraestrutura — dependa 
 
 - **Workflows:**
   - `apply`: **só manual** (`workflow_dispatch`). Nunca dispara em merge na `main`, para que nenhum deploy religue a stack depois de um kill. Disparar o `apply` manualmente já é a aprovação, por isso ele roda `terraform apply -auto-approve -input=false`.
-  - `destroy`: manual (`workflow_dispatch`), usado para zerar custo entre demonstrações. Ele também recebe os secrets `OPENAI_API_KEY` e `ALERT_EMAIL`, porque o Terraform exige valor para toda variável obrigatória. É uma cópia do `apply`, mudando só o nome, o `role-session-name` e o comando final, que são dois: `terraform plan -destroy -out=tfplan > /dev/null` e `terraform apply tfplan`. O log não imprime o plano porque, no provider 6.70.0, o `value` de `aws_api_gateway_usage_plan_key` não é `sensitive`, e o plano de destroy mostraria a API key em texto puro num log público.
+  - `destroy`: manual (`workflow_dispatch`), usado para zerar custo entre demonstrações. Ele também recebe os secrets `OPENAI_API_KEY` e `ALERT_EMAIL`, porque o Terraform exige valor para toda variável obrigatória. É uma cópia do `apply`, mudando só o nome, o `role-session-name` e o comando final, que são dois: `terraform plan -destroy -input=false -out=tfplan > /dev/null` e `terraform apply -input=false tfplan`. O log não imprime o plano porque, no provider 6.70.0, o `value` de `aws_api_gateway_usage_plan_key` não é `sensitive`, e o plano de destroy mostraria a API key em texto puro num log público.
   - `apply` e `destroy`: o job só roda na `main` (`if: github.ref == 'refs/heads/main'`); os secrets entram como `TF_VAR_*` só no passo do Terraform (nunca `-var=` na linha de comando); os dois compartilham o `concurrency` group `terraform`, sem cancelar execução em andamento (um `destroy` pela metade deixaria recursos e lock presos); `role-session-name` `guardrails-apply` / `guardrails-destroy` separa os dois no CloudTrail.
   - `test`: em pull request e em push na `main` (para cobrir commits feitos direto na `main`). Roda os testes unitários (pytest `9.1.1` e boto3/botocore `1.44.2`, só para os testes; Python `3.13`, a mesma da Lambda), `terraform fmt -check` e `terraform validate` (com `terraform init -backend=false`). Sem credenciais AWS (não pede `id-token: write` nem assume a role).
   - Terraform fixado em `1.11.4` nos três workflows.
@@ -319,6 +319,8 @@ Como o código vai para um repositório público, alguns cuidados evitam vazamen
   tests/                testes unitários (pytest)
   infra/                Terraform
   .github/workflows/    apply, destroy, test
+  docs/diagrams/        diagramas da arquitetura (.drawio.svg)
+  MANUAL.md             manual para criar moderadores de texto
   ```
 
 ### Licença
@@ -350,7 +352,7 @@ Resumo das principais ameaças consideradas e como o design responde a cada uma 
 | Escalonamento de privilégio via role de deploy (que cria roles IAM) | `sub` do OIDC restrito à `main` (mitigação principal) + ações de IAM e `iam:PassRole` restritos ao prefixo `guardrails-*`. Risco residual aceito e documentado: a role ainda pode criar uma `guardrails-*` com permissões amplas |
 | Chave da OpenAI legível no `.tfstate` | `value_wo`: a chave não vai para o state |
 | Vazamento da chave da OpenAI | `SecureString` no Parameter Store, nunca hardcoded; acesso restrito ao ARN exato do parâmetro; projeto dedicado na OpenAI, key restrita e limite de gasto |
-| Escalonamento de privilégios via IAM das Lambdas | Least privilege: `comprehend:DetectPiiEntities` e `ssm:GetParameter` no ARN exato na principal, e só `lambda:PutFunctionConcurrency` no ARN da principal na do kill switch; nunca wildcard |
+| Escalonamento de privilégios via IAM das Lambdas | Least privilege: `comprehend:DetectPiiEntities` e `ssm:GetParameter` no ARN exato na principal, e só `lambda:PutFunctionConcurrency` no ARN da principal na do kill switch; nunca ação com wildcard, e recurso `"*"` só no `DetectPiiEntities`, que não aceita permissão por recurso |
 | Vazamento de PII via logs | Apenas metadados (modo, tamanho, latência, status), nunca `text`/`censored_text` |
 | Envio de PII em texto aberto para terceiro externo (OpenAI) | No modo 3, a OpenAI recebe o texto já com PII substituída pelo Comprehend. **Exceção:** no modo 2, o texto original vai para a OpenAI, que o retém por até 30 dias (documentado no README) |
 | Texto enviado ao Comprehend usado pela AWS para melhorar o serviço | AI services opt-out policy no AWS Organizations |
@@ -363,6 +365,8 @@ Resumo das principais ameaças consideradas e como o design responde a cada uma 
 | Segredo vazado via `.tfstate` ou `.tfvars` commitado no repositório público | `.gitignore` cobrindo state e `.tfvars`; state remoto em S3 privado; secret scanning com push protection |
 
 ## Próximos passos
+
+**Todos concluídos** (o registro de cada um, com o que foi medido, está no [ETAPAS.md](ETAPAS.md)).
 
 1. Adicionar ao repositório o `.gitignore`, o `LICENSE` (PolyForm Noncommercial 1.0.0), a estrutura de pastas (ver "Boas práticas de repositório") e o esqueleto do Terraform, com versões fixadas e **sem VPC** para a Lambda. Ativar secret scanning e push protection nas configurações do repositório.
 2. Bootstrap **via Console da AWS** (uma única vez — ver "Execução via CI/CD"), feito com um usuário IAM admin (grupo `admins` com `AdministratorAccess`, MFA, sem access keys), deixando o root (com MFA e sem access keys) só para tarefas exclusivas dele: IAM OIDC Identity Provider do GitHub Actions, role de deploy (nome fora do prefixo `guardrails-*`, `sub` na `main`, permissões escopadas a `guardrails-*`), bucket S3 privado do state, Budget, Cost Anomaly Detection e AI services opt-out policy no AWS Organizations (criando a organização, se a conta for avulsa). Conferir em Service Quotas o limite de concorrência da conta. Na OpenAI: projeto dedicado, key restrita e limite de gasto, testando a Moderation com o limite ativo. No GitHub: secrets `OPENAI_API_KEY`, `ALERT_EMAIL` e `AWS_ROLE_ARN`.
