@@ -1,12 +1,14 @@
-
-
 # Guardrail AI Moderator
+
+[![test](https://github.com/EnzoHashinokutiXavier/Guardrail-AI-Moderator/actions/workflows/test.yml/badge.svg)](https://github.com/EnzoHashinokutiXavier/Guardrail-AI-Moderator/actions/workflows/test.yml)
+![Python 3.13](https://img.shields.io/badge/python-3.13-3776AB?logo=python&logoColor=white)
+![Terraform](https://img.shields.io/badge/terraform-%E2%89%A5%201.11-844FBA?logo=terraform&logoColor=white)
+![AWS](https://img.shields.io/badge/AWS-Lambda%20%C2%B7%20API%20Gateway%20%C2%B7%20Comprehend-FF9900)
+[![License: PolyForm Noncommercial 1.0.0](https://img.shields.io/badge/license-PolyForm%20Noncommercial%201.0.0-lightgrey)](#license)
 
 A serverless API on AWS that receives an **English** text and censors parts of it with `***`: personal data (PII), inappropriate content, or both. Personal data is detected by Amazon Comprehend and inappropriate content by the OpenAI Moderation API.
 
 The infrastructure is defined in Terraform and deployed only by GitHub Actions. The stack is created for a demo and destroyed afterwards, so it costs nothing while it is down.
-
-The code is public for noncommercial use under the [PolyForm Noncommercial License 1.0.0](#license). It is source-available, not open source.
 
 To build a moderator of your own, read the [manual](MANUAL.md): it explains each design decision of this project, why it was made, its trade-offs and the alternatives.
 
@@ -17,20 +19,52 @@ To build a moderator of your own, read the [manual](MANUAL.md): it explains each
 
 https://github.com/user-attachments/assets/77379898-2662-4eed-ad1d-2274b75e668d
 
-The three modes called with `curl` against the deployed stack: mode 1 censors the name and the e-mail, mode 2 censors the threat, and mode 3 does both. `$URL` and `$KEY` hold the demo URL and API key.
+The recording shows a full demo cycle: the `apply` workflow creates the stack, the three modes are called with `curl`, a burst of requests triggers the kill switch, the alert e-mail arrives, and the `destroy` workflow removes everything.
 
-![The three modes called with curl](docs/media/demo-modes.gif)
+## Highlights
 
-## Demo access
+- **Kill switch tested on AWS.** More than 10 invocations in a clock minute set the Lambda's concurrency to `0`, and only a manual deploy turns it back on. See [Kill switch](#kill-switch).
+- **Fail closed.** If Comprehend, Parameter Store or OpenAI fails or times out, the API answers `502` and returns no text.
+- **Personal data is redacted before it reaches a third party.** In mode 3, OpenAI only receives the text already redacted by Comprehend. See [Where the text goes in each mode](#where-the-text-goes-in-each-mode).
+- **No long-lived AWS credentials.** GitHub Actions deploys through OIDC, trusted only for the `main` branch, and the OpenAI key is write-only in Terraform, so it never reaches the state. See [Delivery](#delivery-github-actions-and-oidc).
+- **Least privilege.** Each Lambda role allows only the actions it needs, on the exact resource ARN whenever the service supports it. See [Permissions](#permissions).
+- **About US$ 0 a month while idle.** No VPC or NAT Gateway, and the stack is destroyed between demos. See [Cost](#cost).
+- **Known limits written down.** English only, PII detection is not an anonymization guarantee, and the text leaves Brazil. See [Limitations and risks](#limitations-and-risks).
 
-A demo works like this:
+## Architecture
 
-1. The `apply` workflow creates the stack, and the alert e-mail subscription is confirmed.
-2. The API key is copied from the AWS Console (API Gateway → API Keys → Show) and handed directly to the person trying the API. It is never published in this repository.
-3. The URL is the stage's Invoke URL (API Gateway → Stages → `v1`) followed by `/moderate`.
-4. After the demo, the `destroy` workflow removes everything. The next `apply` creates a new URL and a new key.
+![Architecture overview](docs/diagrams/architecture.drawio.svg)
 
-The protections stay on during a demo. **More than 10 requests in the same clock minute trigger the kill switch**, and the API stays down until the next `apply`.
+**Request path** (dark numbered arrows)
+
+1. The client sends `POST /v1/moderate` with the `x-api-key` header and a JSON body.
+2. API Gateway checks the key, the throttle, the daily quota and the JSON schema. Only valid requests invoke the Lambda.
+3. In modes 1 and 3, Comprehend detects PII and each detected span is replaced with `***`.
+4. In modes 2 and 3, the OpenAI key is read from Parameter Store once per Lambda container and cached in memory.
+5. In modes 2 and 3, OpenAI Moderation checks the text. If the text is flagged, the whole text becomes `***`. In mode 3, OpenAI only receives the text already redacted by Comprehend.
+6. Each request writes one log line with metadata only (status, mode, length, latency), never the text. If Comprehend, Parameter Store or OpenAI fails, the Lambda answers `502` and returns no text (fail closed).
+
+**Kill switch** (red lettered arrows)
+
+- **A.** The moderator's invocations are summed per clock minute.
+- **B.** More than 10 puts the alarm in `ALARM`, and it publishes to the SNS topic.
+- **C.** SNS invokes the kill-switch Lambda and e-mails the operator.
+- **D.** The kill switch sets the moderator's reserved concurrency to `0`. From then on the API answers `5xx` and processes no text.
+- **E.** If the kill switch itself fails, a second alarm on its `Errors` metric sends an e-mail.
+
+Nothing turns the API back on automatically. Only a manual run of the `apply` workflow restores it.
+
+| Component | Resource | Role |
+|---|---|---|
+| API Gateway (REST, regional) | `POST /v1/moderate`, stage `v1` | API key, usage plan (5 req/s, burst 10, 1,000 req/day), JSON-schema validator, uniform `{"error": …}` error bodies |
+| AWS Lambda | `guardrails-moderador` | Python 3.13, arm64, 256 MB, 15 s timeout, no VPC, no third-party packages |
+| Amazon Comprehend | `DetectPiiEntities` | Detects personal data (English only) |
+| OpenAI Moderation API | `omni-moderation-latest` | Detects inappropriate content (third party, outside AWS) |
+| SSM Parameter Store | `guardrails-openai-api-key` | Stores the OpenAI key as a `SecureString` (AWS-managed `aws/ssm` key) |
+| CloudWatch Logs | `/aws/lambda/guardrails-*` | Metadata-only logs, 14-day retention |
+| CloudWatch alarms, SNS, Lambda | `guardrails-alertas`, `guardrails-kill-switch` | Kill switch and alert e-mails |
+
+The stack runs in `us-east-1` because Comprehend is not available in São Paulo (`sa-east-1`). The Lambda has no VPC, so it needs no NAT Gateway, which would cost about US$ 32 a month just to exist.
 
 ## API
 
@@ -82,6 +116,10 @@ Every error has the same body, `{"error": "<generic message>"}`. The text sent i
 
 ### Examples
 
+The three modes called with `curl` against the deployed stack: mode 1 censors the name and the e-mail, mode 2 censors the threat, and mode 3 does both. `$URL` and `$KEY` hold the demo URL and API key.
+
+![The three modes called with curl](docs/media/demo-modes.gif)
+
 Replace `<URL>` and `<API_KEY>` with the values handed over for the demo.
 
 **Mode 1: personal data only**
@@ -129,40 +167,20 @@ Without the threat, the same mode returns only the personal data censored: `"My 
 
 The examples use bash syntax (Linux, macOS, Git Bash or WSL). Windows PowerShell 5.1 strips the inner double quotes from the JSON body when it calls `curl.exe`, so run them from one of those shells.
 
-## Architecture
+### Getting access
 
-![Architecture overview](docs/diagrams/architecture.drawio.svg)
+A demo works like this:
 
-**Request path** (dark numbered arrows)
+1. The `apply` workflow creates the stack, and the alert e-mail subscription is confirmed.
+2. The API key is copied from the AWS Console (API Gateway → API Keys → Show) and handed directly to the person trying the API. It is never published in this repository.
+3. The URL is the stage's Invoke URL (API Gateway → Stages → `v1`) followed by `/moderate`.
+4. After the demo, the `destroy` workflow removes everything. The next `apply` creates a new URL and a new key.
 
-1. The client sends `POST /v1/moderate` with the `x-api-key` header and a JSON body.
-2. API Gateway checks the key, the throttle, the daily quota and the JSON schema. Only valid requests invoke the Lambda.
-3. In modes 1 and 3, Comprehend detects PII and each detected span is replaced with `***`.
-4. In modes 2 and 3, the OpenAI key is read from Parameter Store once per Lambda container and cached in memory.
-5. In modes 2 and 3, OpenAI Moderation checks the text. If the text is flagged, the whole text becomes `***`. In mode 3, OpenAI only receives the text already redacted by Comprehend.
-6. Each request writes one log line with metadata only (status, mode, length, latency), never the text. If Comprehend, Parameter Store or OpenAI fails, the Lambda answers `502` and returns no text (fail closed).
+The protections stay on during a demo. **More than 10 requests in the same clock minute trigger the kill switch**, and the API stays down until the next `apply`.
 
-**Kill switch** (red lettered arrows)
+## Design details
 
-- **A.** The moderator's invocations are summed per clock minute.
-- **B.** More than 10 puts the alarm in `ALARM`, and it publishes to the SNS topic.
-- **C.** SNS invokes the kill-switch Lambda and e-mails the operator.
-- **D.** The kill switch sets the moderator's reserved concurrency to `0`. From then on the API answers `5xx` and processes no text.
-- **E.** If the kill switch itself fails, a second alarm on its `Errors` metric sends an e-mail.
-
-Nothing turns the API back on automatically. Only a manual run of the `apply` workflow restores it.
-
-| Component | Resource | Role |
-|---|---|---|
-| API Gateway (REST, regional) | `POST /v1/moderate`, stage `v1` | API key, usage plan (5 req/s, burst 10, 1,000 req/day), JSON-schema validator, uniform `{"error": …}` error bodies |
-| AWS Lambda | `guardrails-moderador` | Python 3.13, arm64, 256 MB, 15 s timeout, no VPC, no third-party packages |
-| Amazon Comprehend | `DetectPiiEntities` | Detects personal data (English only) |
-| OpenAI Moderation API | `omni-moderation-latest` | Detects inappropriate content (third party, outside AWS) |
-| SSM Parameter Store | `guardrails-openai-api-key` | Stores the OpenAI key as a `SecureString` (AWS-managed `aws/ssm` key) |
-| CloudWatch Logs | `/aws/lambda/guardrails-*` | Metadata-only logs, 14-day retention |
-| CloudWatch alarms, SNS, Lambda | `guardrails-alertas`, `guardrails-kill-switch` | Kill switch and alert e-mails |
-
-The stack runs in `us-east-1` because Comprehend is not available in São Paulo (`sa-east-1`). The Lambda has no VPC, so it needs no NAT Gateway, which would cost about US$ 32 a month just to exist.
+Each part of the architecture in more detail: how a request is checked, where the text goes, how the kill switch works, how the stack is deployed, and what each role is allowed to do.
 
 ### Request flow
 
@@ -348,17 +366,16 @@ AWS Budgets (US$ 5 a month, e-mail at 85% and 100% of actual spend and at 100% o
 | Compromised third-party action in CI | Actions pinned by commit SHA (also enforced in the repository settings), minimal `permissions:`, no `pull_request_target`, approval required for workflows from fork pull requests. |
 | Fixed hourly cost with no traffic | No VPC and no NAT Gateway; the stack is destroyed between demos. |
 
-## License
+## Tests
 
-This repository is **source-available, not open source**. It is licensed under the [PolyForm Noncommercial License 1.0.0](LICENSE).
+The unit tests cover request validation, PII redaction, the three modes, fail-closed behavior and the kill switch. They never call AWS or OpenAI: the AWS clients are stubbed with botocore's `Stubber` and any network connection fails the test.
 
-- You may read, study, modify and redistribute the code for any **noncommercial** purpose, such as personal study, research, hobby projects, or use by educational and other noncommercial organizations.
-- Commercial use is not covered by this license.
-- Anyone who receives a copy must also receive the license terms (or their URL) and the `Required Notice:` line at the end of [LICENSE](LICENSE).
+```bash
+python -m pip install pytest==9.1.1 boto3==1.44.2 botocore==1.44.2
+python -m pytest
+```
 
-It is not open source under the OSI definition, because that definition requires allowing commercial use. PolyForm was chosen instead of CC BY-NC 4.0 because Creative Commons does not recommend its licenses for software.
-
-Like any public repository, it can be viewed and forked on GitHub under GitHub's Terms of Service. The license covers this code only: AWS and OpenAI are used under their own terms.
+`boto3` and `botocore` come with the Lambda runtime; they are installed here only to run the tests. The `test` workflow runs the same tests on every pull request and push to `main`, plus `terraform fmt -check` and `terraform validate`.
 
 ## Repository layout
 
@@ -373,3 +390,15 @@ docs/media/           demo recordings (GIF)
 docs/social-preview/  repository social preview image and its HTML source
 MANUAL.md             design decisions, trade-offs and alternatives for building your own moderator
 ```
+
+## License
+
+This repository is **source-available, not open source**. It is licensed under the [PolyForm Noncommercial License 1.0.0](LICENSE).
+
+- You may read, study, modify and redistribute the code for any **noncommercial** purpose, such as personal study, research, hobby projects, or use by educational and other noncommercial organizations.
+- Commercial use is not covered by this license.
+- Anyone who receives a copy must also receive the license terms (or their URL) and the `Required Notice:` line at the end of [LICENSE](LICENSE).
+
+It is not open source under the OSI definition, because that definition requires allowing commercial use. PolyForm was chosen instead of CC BY-NC 4.0 because Creative Commons does not recommend its licenses for software.
+
+Like any public repository, it can be viewed and forked on GitHub under GitHub's Terms of Service. The license covers this code only: AWS and OpenAI are used under their own terms.
