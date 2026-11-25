@@ -11,6 +11,12 @@ To build a moderator of your own, read the [manual](MANUAL.md): it explains each
 > [!NOTE]
 > **The API is only online during demos.** This repository is the definition of the infrastructure, not a service that is always running. Outside a demo, the URL does not exist and every request fails.
 
+## Demo
+
+The three modes called with `curl` against the deployed stack: mode 1 censors the name and the e-mail, mode 2 censors the threat, and mode 3 does both. `$URL` and `$KEY` hold the demo URL and API key.
+
+![The three modes called with curl](docs/media/demo-modes.gif)
+
 ## Demo access
 
 A demo works like this:
@@ -176,6 +182,10 @@ Each mode does only its own job. Mode 1 does not moderate content, so a threat c
 ![Kill switch sequence](docs/diagrams/kill-switch.drawio.svg)
 
 The timings are from the real test on AWS. The alarm counts invocations per clock minute, not over a sliding 60-second window, so a burst split across two minutes can pass about 20 invocations without triggering. This is accepted because those requests cost cents, and the daily quota caps slower abuse.
+
+The recording below is from a demo run. Fifteen requests in a row all return `200`. A probe then calls the API every 15 seconds; about a minute later the alarm fires, the kill switch sets the concurrency to `0`, and the API answers `500`.
+
+![Kill switch triggered by a burst of requests](docs/media/demo-kill-switch.gif)
 
 ### Delivery: GitHub Actions and OIDC
 
@@ -355,5 +365,7 @@ tests/                unit tests (pytest)
 infra/                Terraform
 .github/workflows/    test, apply, destroy
 docs/diagrams/        architecture diagrams (.drawio.svg)
+docs/media/           demo recordings (GIF)
+docs/social-preview/  repository social preview image and its HTML source
 MANUAL.md             design decisions, trade-offs and alternatives for building your own moderator
 ```

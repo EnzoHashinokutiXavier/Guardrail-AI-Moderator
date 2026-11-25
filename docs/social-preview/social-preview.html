@@ -1,0 +1,174 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Guardrail AI Moderator: social preview</title>
+<!--
+  Social preview image for the GitHub repository (1280x640).
+  Render to PNG with headless Chrome:
+  chrome --headless=new --hide-scrollbars --window-size=1280,640 --screenshot=social-preview.png social-preview.html
+-->
+<style>
+  :root {
+    --bg-1: #0F1B2A;
+    --bg-2: #232F3E;
+    --text: #FFFFFF;
+    --muted: #C3CDD8;
+    --faint: #8FA1B5;
+    --box: #1B2A3B;
+    --line: rgba(255, 255, 255, 0.14);
+    --orange: #FF9900;
+    --teal: #2BD4B4;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { width: 1280px; height: 640px; overflow: hidden; }
+  body {
+    background: radial-gradient(circle at 85% 20%, #2A3B50 0%, transparent 55%),
+                linear-gradient(135deg, var(--bg-1) 0%, var(--bg-2) 100%);
+    color: var(--text);
+    font-family: "Segoe UI", system-ui, sans-serif;
+    position: relative;
+  }
+  .left {
+    position: absolute;
+    left: 72px; top: 68px;
+    width: 580px;
+  }
+  .eyebrow {
+    color: var(--orange);
+    font-size: 19px;
+    font-weight: 700;
+    letter-spacing: 3px;
+  }
+  h1 {
+    margin-top: 14px;
+    font-size: 70px;
+    line-height: 1.02;
+    font-weight: 800;
+    letter-spacing: -1.5px;
+  }
+  .sub {
+    margin-top: 20px;
+    font-size: 26px;
+    line-height: 1.35;
+    color: var(--muted);
+  }
+  .example {
+    margin-top: 30px;
+    background: rgba(0, 0, 0, 0.28);
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    padding: 16px 20px;
+    font-family: "Cascadia Mono", Consolas, monospace;
+    font-size: 19px;
+    line-height: 1.7;
+  }
+  .example .tag { color: var(--faint); display: inline-block; width: 46px; }
+  .example .in { color: var(--muted); }
+  .example .pii { color: #FF8A7A; }
+  .example .out { color: var(--text); }
+  .example .star { color: var(--teal); font-weight: 700; }
+  .chips { margin-top: 26px; display: flex; gap: 10px; flex-wrap: wrap; }
+  .chip {
+    font-size: 17px;
+    font-weight: 600;
+    color: var(--muted);
+    border: 1px solid var(--line);
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 999px;
+    padding: 6px 14px;
+  }
+  .right {
+    position: absolute;
+    right: 64px; top: 100px;
+    width: 516px; height: 440px;
+  }
+</style>
+</head>
+<body>
+  <div class="left">
+    <div class="eyebrow">AWS · SERVERLESS · TERRAFORM</div>
+    <h1>Guardrail AI<br>Moderator</h1>
+    <p class="sub">A serverless API that censors personal data and harmful content.</p>
+    <div class="example">
+      <div class="in"><span class="tag">in</span>My name is <span class="pii">John Smith</span>,<br><span class="tag"></span>email <span class="pii">john@example.com</span></div>
+      <div class="out"><span class="tag">out</span>My name is <span class="star">***</span>, email <span class="star">***</span></div>
+    </div>
+    <div class="chips">
+      <span class="chip">Python</span>
+      <span class="chip">GitHub Actions + OIDC</span>
+      <span class="chip">Fail closed</span>
+      <span class="chip">US$ 0 idle</span>
+    </div>
+  </div>
+
+  <svg class="right" viewBox="0 0 516 440" xmlns="http://www.w3.org/2000/svg" font-family="Segoe UI, system-ui, sans-serif">
+    <defs>
+      <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+        <path d="M0 0 L10 5 L0 10 z" fill="#8FA1B5"/>
+      </marker>
+      <marker id="arrow-red" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+        <path d="M0 0 L10 5 L0 10 z" fill="#FF6B4A"/>
+      </marker>
+    </defs>
+
+    <!-- arrows -->
+    <g stroke="#8FA1B5" stroke-width="2" fill="none">
+      <path d="M125 56 V84" marker-end="url(#arrow)"/>
+      <path d="M125 142 V170" marker-end="url(#arrow)"/>
+      <path d="M125 228 V256" marker-end="url(#arrow)"/>
+      <path d="M125 242 H394 V256" marker-end="url(#arrow)"/>
+    </g>
+
+    <!-- boxes -->
+    <g>
+      <rect x="0" y="0" width="250" height="56" rx="12" fill="#1B2A3B" stroke="rgba(255,255,255,0.14)"/>
+      <rect x="0" y="0" width="7" height="56" rx="3" fill="#8D99A6"/>
+      <text x="22" y="24" fill="#FFFFFF" font-size="18" font-weight="700">Client</text>
+      <text x="22" y="44" fill="#8FA1B5" font-size="14">POST /v1/moderate</text>
+
+      <rect x="0" y="86" width="250" height="56" rx="12" fill="#1B2A3B" stroke="rgba(255,255,255,0.14)"/>
+      <rect x="0" y="86" width="7" height="56" rx="3" fill="#E7157B"/>
+      <text x="22" y="110" fill="#FFFFFF" font-size="18" font-weight="700">API Gateway</text>
+      <text x="22" y="130" fill="#8FA1B5" font-size="14">API key · JSON schema</text>
+
+      <rect x="0" y="172" width="250" height="56" rx="12" fill="#1B2A3B" stroke="rgba(255,255,255,0.14)"/>
+      <rect x="0" y="172" width="7" height="56" rx="3" fill="#ED7100"/>
+      <text x="22" y="196" fill="#FFFFFF" font-size="18" font-weight="700">AWS Lambda</text>
+      <text x="22" y="216" fill="#8FA1B5" font-size="14">Python 3.13 · no VPC</text>
+
+      <rect x="0" y="258" width="243" height="56" rx="12" fill="#1B2A3B" stroke="rgba(255,255,255,0.14)"/>
+      <rect x="0" y="258" width="7" height="56" rx="3" fill="#01A88D"/>
+      <text x="22" y="282" fill="#FFFFFF" font-size="18" font-weight="700">Amazon Comprehend</text>
+      <text x="22" y="302" fill="#8FA1B5" font-size="14">personal data → ***</text>
+
+      <rect x="273" y="258" width="243" height="56" rx="12" fill="#1B2A3B" stroke="rgba(255,255,255,0.14)"/>
+      <rect x="273" y="258" width="7" height="56" rx="3" fill="#A6B4C4"/>
+      <text x="295" y="282" fill="#FFFFFF" font-size="18" font-weight="700">OpenAI Moderation</text>
+      <text x="295" y="302" fill="#8FA1B5" font-size="14">harmful content → ***</text>
+    </g>
+
+    <!-- side notes -->
+    <g fill="#8FA1B5" font-size="15">
+      <text x="276" y="33">English text, up to 1,000 chars</text>
+      <text x="276" y="119">throttle · daily quota</text>
+      <text x="276" y="205">metadata-only logs</text>
+    </g>
+
+    <!-- kill switch -->
+    <rect x="0" y="350" width="516" height="90" rx="14" fill="rgba(209,50,18,0.14)" stroke="#D13212" stroke-width="1.5"/>
+    <text x="22" y="378" fill="#FF6B4A" font-size="13" font-weight="700" letter-spacing="2.5">KILL SWITCH</text>
+    <g font-size="17" fill="#FFFFFF">
+      <text x="22" y="414">&gt;10 calls/min</text>
+      <text x="174" y="414">alarm</text>
+      <text x="264" y="414">SNS</text>
+      <text x="344" y="414" font-weight="700">concurrency = 0</text>
+    </g>
+    <g stroke="#FF6B4A" stroke-width="2" fill="none">
+      <path d="M136 408 H162" marker-end="url(#arrow-red)"/>
+      <path d="M226 408 H252" marker-end="url(#arrow-red)"/>
+      <path d="M306 408 H332" marker-end="url(#arrow-red)"/>
+    </g>
+  </svg>
+</body>
+</html>
