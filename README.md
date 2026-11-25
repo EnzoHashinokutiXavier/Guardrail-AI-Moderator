@@ -1,3 +1,5 @@
+
+
 # Guardrail AI Moderator
 
 A serverless API on AWS that receives an **English** text and censors parts of it with `***`: personal data (PII), inappropriate content, or both. Personal data is detected by Amazon Comprehend and inappropriate content by the OpenAI Moderation API.
@@ -12,6 +14,8 @@ To build a moderator of your own, read the [manual](MANUAL.md): it explains each
 > **The API is only online during demos.** This repository is the definition of the infrastructure, not a service that is always running. Outside a demo, the URL does not exist and every request fails.
 
 ## Demo
+
+https://github.com/user-attachments/assets/77379898-2662-4eed-ad1d-2274b75e668d
 
 The three modes called with `curl` against the deployed stack: mode 1 censors the name and the e-mail, mode 2 censors the threat, and mode 3 does both. `$URL` and `$KEY` hold the demo URL and API key.
 
