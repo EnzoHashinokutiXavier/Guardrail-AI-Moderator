@@ -47,6 +47,9 @@ desktop.ini
 # --- Anotações pessoais ---
 anotações/
 
+# --- Gravações de demo (o vídeo é hospedado pelo GitHub, não versionado) ---
+*.mp4
+
 # --- Claude Code (config local) ---
 .claude/settings.local.json
 .claude/
